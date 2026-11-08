@@ -131,18 +131,35 @@ fun OnlineBookDetailScreen(
                                 )
                             }
                         }
-                    }
-
-                    items(chapters, key = { it.url }) { chapter ->
-                        Text(
-                            text = chapter.title,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpenChapter(chapter.id) }
-                                .padding(vertical = 10.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        items(chapters, key = { it.url }) { chapter ->
+                            Text(
+                                text = chapter.title,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenChapter(chapter.id) }
+                                    .padding(vertical = 10.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    text = error
+                                        ?: "没有获取到章节目录，可能是书源目录规则失效",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = viewModel::retry) {
+                                    Text("重新获取目录")
+                                }
+                            }
+                        }
                     }
                 }
             }

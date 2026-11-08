@@ -82,7 +82,7 @@ class BookSourceImporterTest {
         }.exceptionOrNull()
 
         assertNotNull(error)
-        assertTrue(error!!.message.orEmpty().contains("一次粘贴一个"))
+        assertTrue(error!!.message.orEmpty().contains("批量导入"))
     }
 
     @Test

@@ -114,7 +114,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "版本 1.1.0",
+                        text = "版本 1.1.7",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(

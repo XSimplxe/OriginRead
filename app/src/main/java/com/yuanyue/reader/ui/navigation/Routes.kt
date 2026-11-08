@@ -14,6 +14,7 @@ object Routes {
     const val HOT = "hot"
     const val SETTINGS = "settings"
     const val BOOK_SOURCE_MANAGER = "book_source_manager"
+    const val BOOK_SOURCE_IMPORT = "book_source_import"
     const val COMIC_SOURCE_MANAGER = "comic_source_manager"
     const val FEED_MANAGER = "feed_manager"
     const val ARTICLE_LIST = "article_list/{feedId}"

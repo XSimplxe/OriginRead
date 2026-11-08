@@ -69,7 +69,6 @@ import com.yuanyue.reader.data.PageMode
 import com.yuanyue.reader.data.ReaderSettings
 import com.yuanyue.reader.data.ReaderTheme
 import com.yuanyue.reader.model.BookChapter
-import com.yuanyue.reader.model.BookEntity
 import kotlin.math.roundToInt
 
 @Composable
@@ -130,7 +129,7 @@ fun ReaderScreen(
         else -> {
             val chapter = chapters.getOrNull(selectedChapter) ?: chapters.first()
             ReaderContent(
-                book = book,
+                bookTitle = book.title,
                 chapter = chapter,
                 chapterIndex = selectedChapter,
                 chapterCount = chapters.size,
@@ -171,8 +170,8 @@ private fun ReaderEmpty(onBack: () -> Unit, onRetry: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun ReaderContent(
-    book: BookEntity,
+internal fun ReaderContent(
+    bookTitle: String,
     chapter: BookChapter,
     chapterIndex: Int,
     chapterCount: Int,
@@ -329,7 +328,7 @@ private fun ReaderContent(
             exit = fadeOut(),
         ) {
             ReaderTopBar(
-                title = book.title,
+                title = bookTitle,
                 backgroundColor = palette.background,
                 contentColor = palette.text,
                 onBack = onBack,

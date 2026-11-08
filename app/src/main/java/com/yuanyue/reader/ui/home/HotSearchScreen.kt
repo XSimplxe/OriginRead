@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +46,7 @@ import com.yuanyue.reader.data.HotSearchPlatform
 fun HotSearchScreen(
     viewModel: HotSearchViewModel,
     onOpenHotArticle: (String, String, String) -> Unit,
+    onOpenHome: () -> Unit,
 ) {
     val platforms = HotSearchPlatform.entries
     val selected = viewModel.selectedPlatform
@@ -57,6 +59,11 @@ fun HotSearchScreen(
         topBar = {
             TopAppBar(
                 title = { Text("热榜") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenHome) {
+                        Icon(Icons.Default.Home, contentDescription = "回到首页")
+                    }
+                },
                 actions = {
                     if (isLoading) {
                         CircularProgressIndicator(

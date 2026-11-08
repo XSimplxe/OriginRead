@@ -1,28 +1,30 @@
 package com.yuanyue.reader.ui.online
 
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.yuanyue.reader.ui.components.NativeArticleContent
+import com.yuanyue.reader.data.ReaderSettings
+import com.yuanyue.reader.model.BookChapter
+import com.yuanyue.reader.ui.reader.ReaderContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,17 +36,44 @@ fun OnlineReaderScreen(
     val chapters = viewModel.chapters
     val currentIndex = viewModel.currentIndex
     val currentChapter = chapters.getOrNull(currentIndex)
+    val settings by viewModel.settings.collectAsState(initial = ReaderSettings())
+    val isLoading = viewModel.isLoading
+    val error = viewModel.error
+
+    val showReader = book != null &&
+        currentChapter != null &&
+        !isLoading &&
+        error == null &&
+        viewModel.content.isNotBlank()
+
+    if (showReader) {
+        val tocChapters = remember(chapters) {
+            chapters.map { BookChapter(it.title, "") }
+        }
+        ReaderContent(
+            bookTitle = book?.title ?: "在线阅读",
+            chapter = BookChapter(currentChapter?.title.orEmpty(), viewModel.content),
+            chapterIndex = currentIndex,
+            chapterCount = chapters.size,
+            chapters = tocChapters,
+            initialPage = 0,
+            settings = settings,
+            onBack = onBack,
+            onSelectChapter = viewModel::selectChapter,
+            onProgress = { _, _, _ -> },
+            onFontSizeChange = viewModel::updateFontSize,
+            onLineHeightChange = viewModel::updateLineHeight,
+            onThemeChange = viewModel::updateTheme,
+            onPageModeChange = viewModel::updatePageMode,
+            onSerifFontChange = viewModel::updateSerifFont,
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = currentChapter?.title ?: book?.title ?: "在线阅读",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                title = { Text(book?.title ?: "在线阅读") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -52,76 +81,34 @@ fun OnlineReaderScreen(
                 },
             )
         },
-        bottomBar = {
-            Surface {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = {
-                            chapters.getOrNull(currentIndex - 1)?.let(viewModel::openChapter)
-                        },
-                        enabled = currentIndex > 0,
-                    ) {
-                        Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一章")
-                    }
-                    Text(
-                        text = "${currentIndex + 1} / ${chapters.size}",
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    TextButton(
-                        onClick = {
-                            chapters.getOrNull(currentIndex + 1)?.let(viewModel::openChapter)
-                        },
-                        enabled = currentIndex < chapters.size - 1,
-                    ) {
-                        Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一章")
-                    }
-                }
-            }
-        },
     ) { padding ->
-        when {
-            viewModel.isLoading -> {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLoading || error == null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CircularProgressIndicator()
+                    Text("正在加载章节正文…")
                 }
-            }
-
-            viewModel.error != null -> {
-                androidx.compose.foundation.layout.Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(24.dp),
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            } else {
+                Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(viewModel.error.orEmpty())
+                    Text(error.orEmpty())
                     TextButton(onClick = viewModel::retry) {
                         Text("重新加载")
                     }
+                    TextButton(onClick = onBack) {
+                        Text("返回目录")
+                    }
                 }
-            }
-
-            else -> {
-                NativeArticleContent(
-                    title = currentChapter?.title ?: book?.title.orEmpty(),
-                    subtitle = book?.author,
-                    content = viewModel.content,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                )
             }
         }
     }

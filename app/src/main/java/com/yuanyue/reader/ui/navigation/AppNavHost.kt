@@ -36,6 +36,8 @@ import com.yuanyue.reader.ui.library.BookshelfScreen
 import com.yuanyue.reader.ui.library.LibraryViewModel
 import com.yuanyue.reader.ui.reader.ReaderScreen
 import com.yuanyue.reader.ui.reader.ReaderViewModel
+import com.yuanyue.reader.ui.online.BookSourceImportScreen
+import com.yuanyue.reader.ui.online.BookSourceImportViewModel
 import com.yuanyue.reader.ui.online.BookSourceManagerScreen
 import com.yuanyue.reader.ui.online.BookSourceManagerViewModel
 import com.yuanyue.reader.ui.online.OnlineBookDetailScreen
@@ -60,6 +62,15 @@ fun AppNavHost(container: AppContainer) {
     val currentDestination = backStackEntry?.destination
     val topLevelRoutes = TopLevelDestination.entries.map { it.route }
     val isTopLevel = currentDestination?.route in topLevelRoutes
+    val navigateToTopLevel: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -72,13 +83,7 @@ fun AppNavHost(container: AppContainer) {
                         NavigationBarItem(
                             selected = selected,
                             onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                navigateToTopLevel(destination.route)
                             },
                             icon = {
                                 Icon(
@@ -113,7 +118,7 @@ fun AppNavHost(container: AppContainer) {
                     onOpenArticle = { articleId ->
                         navController.navigate(Routes.articleDetail(articleId))
                     },
-                    onOpenHotBoard = { navController.navigate(Routes.HOT) },
+                    onOpenHotBoard = { navigateToTopLevel(Routes.HOT) },
                 )
             }
 
@@ -166,6 +171,7 @@ fun AppNavHost(container: AppContainer) {
                     onOpenHotArticle = { title, url, subtitle ->
                         navController.navigate(Routes.hotArticle(title, url, subtitle))
                     },
+                    onOpenHome = { navigateToTopLevel(Routes.HOME) },
                 )
             }
 
@@ -221,6 +227,19 @@ fun AppNavHost(container: AppContainer) {
                 BookSourceManagerScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
+                    onOpenImport = { navController.navigate(Routes.BOOK_SOURCE_IMPORT) },
+                )
+            }
+
+            composable(Routes.BOOK_SOURCE_IMPORT) {
+                val viewModel: BookSourceImportViewModel = viewModel(
+                    factory = viewModelFactory {
+                        BookSourceImportViewModel(container.onlineBookRepository)
+                    },
+                )
+                BookSourceImportScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
                 )
             }
 
@@ -273,6 +292,7 @@ fun AppNavHost(container: AppContainer) {
                             bookId = bookId,
                             chapterId = chapterId,
                             repository = container.onlineBookRepository,
+                            settingsRepository = container.settingsRepository,
                         )
                     },
                 )

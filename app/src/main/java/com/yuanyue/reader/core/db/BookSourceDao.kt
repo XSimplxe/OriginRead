@@ -19,6 +19,9 @@ interface BookSourceDao {
     @Query("SELECT * FROM book_sources WHERE url = :url LIMIT 1")
     suspend fun getByUrl(url: String): BookSourceEntity?
 
+    @Query("SELECT url FROM book_sources")
+    suspend fun getAllUrls(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(source: BookSourceEntity): Long
 

@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -53,6 +54,9 @@ fun OnlineLibraryContent(
     val searchResults = viewModel.searchResults
     val isSearching = viewModel.isSearching
     val error = viewModel.error
+    val isRecommending = viewModel.isRecommending
+    val recommendError = viewModel.recommendError
+    val recommendationLoaded = viewModel.recommendationLoaded
     var keyword by remember { mutableStateOf("") }
 
     Column(
@@ -120,26 +124,92 @@ fun OnlineLibraryContent(
             )
         }
 
+        recommendError?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
         val displayBooks = if (searchResults.isNotEmpty()) searchResults else books
-        if (isSearching) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+        when {
+            isSearching -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                items(displayBooks, key = { it.bookUrl }) { book ->
-                    OnlineBookRow(book = book, onClick = { onOpenBook(book.id) })
+
+            displayBooks.isEmpty() && isRecommending -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text(
+                            text = "正在为这个书源抓取推荐书籍…",
+                            modifier = Modifier.padding(top = 12.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+
+            displayBooks.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("这个书源还没有书")
+                        Text(
+                            text = "可以上方搜索书名，或重新抓取推荐",
+                            modifier = Modifier.padding(top = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = viewModel::retryRecommendations) {
+                            Text("抓取推荐")
+                        }
+                    }
+                }
+            }
+
+            else -> {
+                if (isRecommending) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    if (recommendationLoaded && searchResults.isEmpty()) {
+                        item {
+                            Text(
+                                text = "推荐书籍",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(vertical = 2.dp),
+                            )
+                        }
+                    }
+                    items(displayBooks, key = { it.bookUrl }) { book ->
+                        OnlineBookRow(book = book, onClick = { onOpenBook(book.id) })
+                    }
                 }
             }
         }

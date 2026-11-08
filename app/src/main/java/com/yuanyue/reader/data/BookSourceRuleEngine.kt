@@ -7,6 +7,7 @@ import com.yuanyue.reader.model.OnlineChapterEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -96,17 +97,23 @@ class BookSourceRuleEngine(
     ): List<OnlineBookEntity> = withContext(Dispatchers.IO) {
         val searchUrl = source.searchUrl
             ?: throw IllegalStateException("该书源未配置搜索地址")
-        val url = renderUrl(
-            template = searchUrl,
-            replacements = mapOf(
-                "key" to keyword,
-                "searchKey" to keyword,
-                "page" to page.toString(),
+        val url = resolveUrl(
+            normalizeBaseUrl(source.url),
+            renderUrl(
+                template = searchUrl,
+                replacements = mapOf(
+                    "key" to keyword,
+                    "searchKey" to keyword,
+                    "page" to page.toString(),
+                ),
             ),
         )
+        if (!isHttpUrl(url)) {
+            throw IllegalStateException("书源搜索地址不是完整链接：$searchUrl")
+        }
         val html = fetch(url, source.url)
         val document = Jsoup.parse(html, url)
-        val items = document.select(source.searchListRule ?: "a")
+        val items = document.select(selectorOf(source.searchListRule))
         items.mapNotNull { item ->
             val title = extract(item, source.bookNameRule)
                 ?.trim()
@@ -114,7 +121,12 @@ class BookSourceRuleEngine(
                 .ifBlank { item.text().trim() }
             val bookUrl = extract(item, source.bookUrlRule)
                 ?.let { resolveUrl(url, it) }
-                ?: resolveUrl(url, item.attr("href"))
+                ?: resolveUrl(
+                    url,
+                    item.attr("href").ifBlank {
+                        item.selectFirst("a")?.attr("href").orEmpty()
+                    },
+                )
             if (title.isBlank() || !isHttpUrl(bookUrl)) return@mapNotNull null
             OnlineBookEntity(
                 sourceId = source.id,
@@ -148,26 +160,38 @@ class BookSourceRuleEngine(
         source: BookSourceEntity,
         book: OnlineBookEntity,
     ): List<OnlineChapterEntity> = withContext(Dispatchers.IO) {
-        val tocUrl = source.tocUrlRule
-            ?.let {
-                renderUrl(
-                    template = it,
-                    replacements = mapOf("bookUrl" to book.bookUrl),
-                )
-            }
-            ?: book.bookUrl
-        val resolvedTocUrl = resolveUrl(book.bookUrl, tocUrl)
-        val html = fetch(resolvedTocUrl, book.bookUrl)
-        val document = Jsoup.parse(html, resolvedTocUrl)
-        val items = document.select(source.chapterListRule ?: "a")
-        items.mapIndexedNotNull { index, item ->
+        val bookUrl = normalizeBaseUrl(book.bookUrl)
+        val tocUrl = resolveTocUrl(source, bookUrl)
+        val pages = buildList {
+            if (tocUrl != null && isHttpUrl(tocUrl)) add(tocUrl)
+            if (bookUrl !in this) add(bookUrl)
+        }
+        for (pageUrl in pages) {
+            val chapters = runCatching { parseChapters(source, book, pageUrl) }
+                .getOrDefault(emptyList())
+            if (chapters.isNotEmpty()) return@withContext chapters
+        }
+        emptyList()
+    }
+
+    private fun parseChapters(
+        source: BookSourceEntity,
+        book: OnlineBookEntity,
+        pageUrl: String,
+    ): List<OnlineChapterEntity> {
+        val html = fetch(pageUrl, book.bookUrl)
+        val document = Jsoup.parse(html, pageUrl)
+        val items = document.select(selectorOf(source.chapterListRule))
+        return items.mapIndexedNotNull { index, item ->
             val title = extract(item, source.chapterNameRule)
                 ?.trim()
                 .orEmpty()
                 .ifBlank { item.text().trim() }
-            val url = extract(item, source.chapterUrlRule)
-                ?.let { resolveUrl(resolvedTocUrl, it) }
-                ?: resolveUrl(resolvedTocUrl, item.attr("href"))
+            val rawUrl = extract(item, source.chapterUrlRule)
+                ?: item.attr("href").ifBlank {
+                    item.selectFirst("a")?.attr("href").orEmpty()
+                }
+            val url = resolveUrl(pageUrl, rawUrl)
             if (title.isBlank() || !isHttpUrl(url)) return@mapIndexedNotNull null
             OnlineChapterEntity(
                 bookId = book.id,
@@ -181,30 +205,102 @@ class BookSourceRuleEngine(
             .mapIndexed { index, chapter -> chapter.copy(chapterIndex = index) }
     }
 
+    /**
+     * Legado 的 ruleBookInfo.tocUrl 既可能是 URL 模板，也可能是一个从详情页提取目录链接的选择器。
+     * 之前一律当成 URL，选择器会变成站点下的奇怪路径，导致目录永远为空。
+     */
+    private fun resolveTocUrl(
+        source: BookSourceEntity,
+        bookUrl: String,
+    ): String? {
+        val rule = source.tocUrlRule?.trim().orEmpty()
+        if (rule.isBlank()) return bookUrl
+
+        if (looksLikeUrlRule(rule)) {
+            val rendered = renderUrl(rule, mapOf("bookUrl" to bookUrl))
+            return resolveUrl(bookUrl, rendered).takeIf { isHttpUrl(it) } ?: bookUrl
+        }
+
+        val html = runCatching { fetch(bookUrl, source.url) }.getOrNull() ?: return bookUrl
+        val document = Jsoup.parse(html, bookUrl)
+        val link = extractTocLink(document, rule) ?: return bookUrl
+        return resolveUrl(bookUrl, link).takeIf { isHttpUrl(it) } ?: bookUrl
+    }
+
+    private fun looksLikeUrlRule(rule: String): Boolean {
+        val value = rule.trim()
+        val lower = value.lowercase()
+        return value.contains("{{") ||
+            value.startsWith("http://") ||
+            value.startsWith("https://") ||
+            value.startsWith("//") ||
+            value.startsWith("/") ||
+            value.startsWith("./") ||
+            value.startsWith("../") ||
+            value.startsWith("?") ||
+            value.contains("://") ||
+            lower.endsWith(".html") ||
+            lower.endsWith(".htm") ||
+            lower.endsWith(".php") ||
+            lower.endsWith(".asp") ||
+            lower.endsWith(".aspx") ||
+            lower.endsWith(".jsp")
+    }
+
+    private fun extractTocLink(document: Document, rule: String): String? {
+        val alternatives = rule.split("||").map { it.trim() }.filter { it.isNotEmpty() }
+        for (alternative in alternatives) {
+            val (selector, attribute) = parseRule(alternative)
+            if (selector.isBlank()) continue
+            val element = runCatching { document.selectFirst(selector) }.getOrNull() ?: continue
+            val value = when (attribute) {
+                "html" -> element.html()
+                null -> element.attr("href")
+                    .ifBlank { element.selectFirst("a[href]")?.attr("href").orEmpty() }
+                    .ifBlank { element.attr("data-href") }
+                    .ifBlank { element.attr("data-url") }
+                    .ifBlank { element.text() }
+                else -> element.attr(attribute)
+            }.trim()
+            if (value.isNotBlank()) return value
+        }
+        return null
+    }
+
     suspend fun content(
         source: BookSourceEntity,
         chapterUrl: String,
     ): String = withContext(Dispatchers.IO) {
         val html = fetch(chapterUrl, source.url)
         val document = Jsoup.parse(html, chapterUrl)
-        val element = selectContentElement(document, source.contentRule)
-            ?: document.body()
-            ?: document
-        val text = HtmlTextExtractor.toText(element.html())
+        val rawHtml = extractContentHtml(document, source.contentRule)
+            ?: document.body()?.html()
+            .orEmpty()
+        val text = HtmlTextExtractor.toText(rawHtml)
         applyReplaceRules(text, source.contentReplaceRules)
     }
 
-    private fun selectContentElement(document: Document, rule: String?): Element? {
-        if (rule.isNullOrBlank()) return null
+    private fun extractContentHtml(document: Document, rule: String?): String? {
+        if (rule.isNullOrBlank()) return document.body()?.html()
         val alternatives = rule.split("||").map { it.trim() }.filter { it.isNotEmpty() }
         for (alternative in alternatives) {
-            val (selector, _) = parseRule(alternative)
-            if (selector.isBlank()) continue
-            runCatching { document.selectFirst(selector) }.getOrNull()?.let { return it }
+            val (selector, attribute) = parseRule(alternative)
+            val wantsText = alternative == "text" || alternative.endsWith("@text")
+            if (selector.isBlank()) {
+                val body = document.body() ?: continue
+                return if (wantsText) body.text() else body.html()
+            }
+            val elements = runCatching { document.select(selector) }.getOrNull() ?: continue
+            if (elements.isEmpty()) continue
+            return when {
+                attribute == "html" -> elements.joinToString("\n") { it.html() }
+                wantsText -> elements.joinToString("\n") { it.text() }
+                attribute != null -> elements.joinToString("\n") { it.attr(attribute) }
+                elements.size == 1 -> elements[0].html()
+                else -> elements.joinToString("\n") { it.html() }
+            }
         }
-        // Legado 的规则经常包含 @text / @html 后缀，去掉后再试一次
-        val (selector, _) = parseRule(rule.substringBeforeLast('@'))
-        return runCatching { document.selectFirst(selector) }.getOrNull()
+        return null
     }
 
     private fun renderUrl(
@@ -213,11 +309,16 @@ class BookSourceRuleEngine(
     ): String {
         var result = template
         replacements.forEach { (key, value) ->
-            val encoded = URLEncoder.encode(value, "UTF-8")
+            // bookUrl 是完整链接，不能 URL 编码；只有搜索词/页码才需要编码。
+            val replacement = if (key.equals("bookUrl", ignoreCase = true)) {
+                value
+            } else {
+                URLEncoder.encode(value, "UTF-8")
+            }
             result = result
-                .replace("{{$key}}", encoded)
-                .replace("{{${key.uppercase()}}}", encoded)
-                .replace("{{ ${key} }}", encoded)
+                .replace("{{$key}}", replacement)
+                .replace("{{${key.uppercase()}}}", replacement)
+                .replace("{{ ${key} }}", replacement)
         }
         // Legado 的 POST 参数后缀：,{"method":"POST",...}
         val optionIndex = result.indexOf(",{")
@@ -228,8 +329,10 @@ class BookSourceRuleEngine(
     }
 
     private fun fetch(url: String, referer: String? = null): String {
+        val httpUrl = url.toHttpUrlOrNull()
+            ?: throw IllegalStateException("书源地址不是完整链接：$url")
         val builder = Request.Builder()
-            .url(url)
+            .url(httpUrl)
             .header(
                 "User-Agent",
                 "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
@@ -249,6 +352,18 @@ class BookSourceRuleEngine(
             }
             return response.body?.string().orEmpty()
         }
+    }
+
+    /**
+     * 列表规则（搜索列表/目录列表）同样要先把 Legado 写法翻译成 CSS。
+     * 之前直接把 class.book-list@tag.li 丢给 Jsoup，匹配不到任何元素，搜索和目录就会是空的。
+     */
+    private fun selectorOf(rule: String?, fallback: String = "a"): String {
+        if (rule.isNullOrBlank()) return fallback
+        val selector = rule.split("||")
+            .map { parseRule(it.trim()).first }
+            .firstOrNull { it.isNotBlank() }
+        return selector ?: fallback
     }
 
     private fun extract(element: Element, rule: String?): String? {
@@ -335,6 +450,11 @@ class BookSourceRuleEngine(
         if (isHttpUrl(value)) return value
         if (value.isBlank()) return base
         return runCatching { URI(base).resolve(value).toString() }.getOrDefault(value)
+    }
+
+    private fun normalizeBaseUrl(url: String): String {
+        val trimmed = url.trim()
+        return if (isHttpUrl(trimmed)) trimmed else "https://${trimmed.trimStart('/')}"
     }
 
     private fun isHttpUrl(value: String): Boolean =
