@@ -67,6 +67,7 @@ class ReaderViewModel(
                 selectedChapter = loadedBook.lastReadPosition
                     .coerceIn(0, loadedChapters.size - 1)
                 initialPage = loadedBook.totalPages.coerceAtLeast(0)
+                lastProgressAt = System.currentTimeMillis()
             } catch (error: Exception) {
                 loadError = "打开失败：${error.message ?: "无法读取这本书"}"
             } finally {
@@ -75,10 +76,13 @@ class ReaderViewModel(
         }
     }
 
+    private var lastProgressAt = 0L
+
     fun selectChapter(index: Int) {
         if (index in chapters.indices) {
             selectedChapter = index
             initialPage = 0
+            lastProgressAt = System.currentTimeMillis()
         }
     }
 
@@ -90,6 +94,13 @@ class ReaderViewModel(
         val currentBook = book ?: return
         val chapterCount = chapters.size
         if (chapterCount == 0) return
+        val now = System.currentTimeMillis()
+        val readingDelta = if (lastProgressAt > 0L) {
+            ((now - lastProgressAt) / 1000L).coerceIn(0L, 120L)
+        } else {
+            0L
+        }
+        lastProgressAt = now
         viewModelScope.launch {
             libraryRepository.updateProgress(
                 bookId = currentBook.id,
@@ -97,6 +108,7 @@ class ReaderViewModel(
                 chapterCount = chapterCount,
                 pageIndex = pageIndex.coerceAtLeast(0),
                 pageCount = pageCount.coerceAtLeast(0),
+                readingDeltaSeconds = readingDelta,
             )
         }
     }
@@ -119,5 +131,17 @@ class ReaderViewModel(
 
     fun updateSerifFont(value: Boolean) {
         viewModelScope.launch { settingsRepository.updateSerifFont(value) }
+    }
+
+    fun updateParagraphSpacing(value: Float) {
+        viewModelScope.launch { settingsRepository.updateParagraphSpacing(value) }
+    }
+
+    fun updateContentPadding(value: Float) {
+        viewModelScope.launch { settingsRepository.updateContentPadding(value) }
+    }
+
+    fun updateIndentFirstLine(value: Boolean) {
+        viewModelScope.launch { settingsRepository.updateIndentFirstLine(value) }
     }
 }

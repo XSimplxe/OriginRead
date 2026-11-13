@@ -66,6 +66,9 @@ fun OnlineReaderScreen(
             onThemeChange = viewModel::updateTheme,
             onPageModeChange = viewModel::updatePageMode,
             onSerifFontChange = viewModel::updateSerifFont,
+            onParagraphSpacingChange = viewModel::updateParagraphSpacing,
+            onContentPaddingChange = viewModel::updateContentPadding,
+            onIndentFirstLineChange = viewModel::updateIndentFirstLine,
         )
         return
     }

@@ -4,6 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.yuanyue.reader.core.db.BookDao
+import com.yuanyue.reader.data.parser.BookTextParser
+import com.yuanyue.reader.data.parser.ComicPage
+import com.yuanyue.reader.data.parser.EpubComicParser
 import com.yuanyue.reader.data.parser.EpubParser
 import com.yuanyue.reader.data.parser.TextFileReader
 import com.yuanyue.reader.data.parser.TxtChapterParser
@@ -35,7 +38,17 @@ class LibraryRepository(
                 val extension = name.substringAfterLast('.', "").lowercase()
                 val format = when (extension) {
                     "epub" -> BookFormat.EPUB
-                    else -> BookFormat.TXT
+                    "pdf" -> BookFormat.PDF
+                    "docx" -> BookFormat.DOCX
+                    "rtf" -> BookFormat.RTF
+                    "html", "htm", "xhtml" -> BookFormat.HTML
+                    "fb2" -> BookFormat.FB2
+                    "mobi" -> BookFormat.MOBI
+                    "azw3" -> BookFormat.AZW3
+                    "txt", "text", "md", "markdown" -> BookFormat.TXT
+                    "doc" -> throw IllegalArgumentException("暂不支持旧版 .doc，请另存为 .docx 后再导入")
+                    "" -> BookFormat.TXT
+                    else -> throw IllegalArgumentException("暂不支持 .$extension 格式")
                 }
 
                 val bookDir = File(context.filesDir, "books").apply { mkdirs() }
@@ -47,17 +60,28 @@ class LibraryRepository(
                     BookFormat.EPUB -> {
                         val coverDir = File(context.filesDir, "covers").apply { mkdirs() }
                         val parsed = EpubParser().parse(destFile, coverDir)
+                        val isComic = EpubComicParser.isComic(destFile)
                         BookEntity(
                             title = parsed.title,
                             author = parsed.author,
                             localPath = destFile.absolutePath,
                             fileName = name,
-                            format = format,
+                            format = if (isComic) BookFormat.EPUB_COMIC else BookFormat.EPUB,
                             coverPath = parsed.coverPath,
                         )
                     }
 
                     BookFormat.TXT -> {
+                        BookEntity(
+                            title = name.substringBeforeLast('.', name),
+                            author = null,
+                            localPath = destFile.absolutePath,
+                            fileName = name,
+                            format = format,
+                        )
+                    }
+
+                    else -> {
                         BookEntity(
                             title = name.substringBeforeLast('.', name),
                             author = null,
@@ -92,7 +116,23 @@ class LibraryRepository(
             BookFormat.EPUB -> runCatching {
                 EpubParser().parse(file, File(context.filesDir, "covers")).chapters
             }.getOrDefault(emptyList())
+
+            BookFormat.EPUB_COMIC -> emptyList()
+
+            else -> BookTextParser.parse(context, file, book.format.name)
         }
+    }
+
+    suspend fun loadComicPages(book: BookEntity): List<ComicPage> = withContext(Dispatchers.IO) {
+        if (book.format != BookFormat.EPUB_COMIC) {
+            throw IllegalArgumentException("这不是图片型 EPUB 漫画")
+        }
+        val file = File(book.localPath)
+        if (!file.exists()) throw IllegalArgumentException("漫画文件不存在")
+        EpubComicParser.extract(
+            file = file,
+            cacheDir = File(context.filesDir, "comic_cache/${book.id}"),
+        )
     }
 
     suspend fun updateProgress(
@@ -101,6 +141,7 @@ class LibraryRepository(
         chapterCount: Int,
         pageIndex: Int,
         pageCount: Int,
+        readingDeltaSeconds: Long = 0L,
     ) {
         if (chapterCount <= 0) return
         val pageProgress = if (pageCount > 0) {
@@ -115,7 +156,30 @@ class LibraryRepository(
             chapterIndex = chapterIndex,
             pageIndex = pageIndex,
             progress = progress,
+            lastReadAt = System.currentTimeMillis(),
+            readingDelta = readingDeltaSeconds.coerceIn(0L, 300L),
         )
+    }
+
+    suspend fun updateBookInfo(
+        bookId: Long,
+        title: String,
+        author: String?,
+        description: String?,
+        tags: String,
+    ) {
+        val cleanTitle = title.trim().ifBlank { return }
+        bookDao.updateInfo(
+            bookId = bookId,
+            title = cleanTitle,
+            author = author?.trim()?.takeIf { it.isNotBlank() },
+            description = description?.trim()?.takeIf { it.isNotBlank() },
+            tags = tags.trim(),
+        )
+    }
+
+    suspend fun updateFavorite(bookId: Long, favorite: Boolean) {
+        bookDao.updateFavorite(bookId, favorite)
     }
 
     suspend fun deleteBook(book: BookEntity) {

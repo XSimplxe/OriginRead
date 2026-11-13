@@ -143,4 +143,16 @@ class OnlineReaderViewModel(
     fun updateSerifFont(value: Boolean) {
         viewModelScope.launch { settingsRepository.updateSerifFont(value) }
     }
+
+    fun updateParagraphSpacing(value: Float) {
+        viewModelScope.launch { settingsRepository.updateParagraphSpacing(value) }
+    }
+
+    fun updateContentPadding(value: Float) {
+        viewModelScope.launch { settingsRepository.updateContentPadding(value) }
+    }
+
+    fun updateIndentFirstLine(value: Boolean) {
+        viewModelScope.launch { settingsRepository.updateIndentFirstLine(value) }
+    }
 }

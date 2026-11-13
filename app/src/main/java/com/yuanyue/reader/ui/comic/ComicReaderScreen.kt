@@ -1,5 +1,6 @@
 package com.yuanyue.reader.ui.comic
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -24,15 +28,23 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.yuanyue.reader.model.ComicImageItem
+import kotlinx.coroutines.flow.distinctUntilChanged
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ComicReaderScreen(
     viewModel: ComicReaderViewModel,
@@ -41,6 +53,9 @@ fun ComicReaderScreen(
     val chapters = viewModel.chapters
     val currentIndex = viewModel.currentIndex
     val currentChapter = chapters.getOrNull(currentIndex)
+    val images = viewModel.images
+    var vertical by remember { mutableStateOf(true) }
+    var currentPage by remember(currentChapter?.id, vertical) { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -55,6 +70,11 @@ fun ComicReaderScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { vertical = !vertical }) {
+                        Text(if (vertical) "上下" else "左右")
                     }
                 },
             )
@@ -74,7 +94,9 @@ fun ComicReaderScreen(
                         Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一章")
                     }
                     Text(
-                        text = "${currentIndex + 1} / ${chapters.size}",
+                        text = "${currentIndex + 1} / ${chapters.size}   ·   ${
+                            if (images.isEmpty()) "0 / 0" else "${currentPage + 1} / ${images.size}"
+                        }",
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Center,
                     )
@@ -116,24 +138,92 @@ fun ComicReaderScreen(
                 }
             }
 
-            else -> {
-                LazyColumn(
+            images.isEmpty() -> {
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentPadding = PaddingValues(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    items(viewModel.images) { image ->
-                        AsyncImage(
-                            model = image.url,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.FillWidth,
-                        )
-                    }
+                    Text("本章没有找到漫画图片")
                 }
             }
+
+            vertical -> {
+                ComicVerticalList(
+                    images = images,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    currentPage = currentPage,
+                    onPageChange = { currentPage = it },
+                )
+            }
+
+            else -> {
+                ComicHorizontalPager(
+                    images = images,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    currentPage = currentPage,
+                    onPageChange = { currentPage = it },
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ComicVerticalList(
+    images: List<ComicImageItem>,
+    modifier: Modifier,
+    currentPage: Int,
+    onPageChange: (Int) -> Unit,
+) {
+    val state = rememberLazyListState()
+    LaunchedEffect(state) {
+        snapshotFlow { state.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect(onPageChange)
+    }
+    LazyColumn(
+        state = state,
+        modifier = modifier,
+        contentPadding = PaddingValues(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        itemsIndexed(images, key = { index, image -> "${image.url}#$index" }) { _, image ->
+            ComicImageView(
+                model = image.url,
+                referer = image.referer,
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.FillWidth,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ComicHorizontalPager(
+    images: List<ComicImageItem>,
+    modifier: Modifier,
+    currentPage: Int,
+    onPageChange: (Int) -> Unit,
+) {
+    val pagerState = rememberPagerState(pageCount = { images.size })
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect(onPageChange)
+    }
+    HorizontalPager(state = pagerState, modifier = modifier) { page ->
+        val image = images[page]
+        ZoomableComicImageView(
+            model = image.url,
+            referer = image.referer,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }

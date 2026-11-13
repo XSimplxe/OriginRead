@@ -91,7 +91,18 @@ class ComicSourceRuleEngine(
         val items = document.select(source.imageListRule ?: "img")
         items.mapNotNull { image ->
             val rawUrl = extract(image, source.imageUrlRule)
-                ?: image.attr("data-src").ifBlank { image.attr("src") }
+                ?: listOf(
+                    "data-src",
+                    "data-original",
+                    "data-lazy-src",
+                    "data-echo",
+                    "data-url",
+                ).firstNotNullOfOrNull { attribute ->
+                    image.attr(attribute).trim().takeIf { it.isNotBlank() }
+                }
+                ?: image.attr("srcset").substringBefore(',').substringBefore(' ').trim()
+                    .takeIf { it.isNotBlank() }
+                ?: image.attr("src")
             val url = if (rawUrl.isBlank()) {
                 ""
             } else {
@@ -134,6 +145,9 @@ class ComicSourceRuleEngine(
     }
 
     private fun resolveUrl(base: String, value: String): String {
+        if (value.startsWith("//")) {
+            return (if (base.startsWith("https://")) "https:" else "http:") + value
+        }
         if (isHttpUrl(value)) return value
         return runCatching { URI(base).resolve(value).toString() }.getOrDefault(value)
     }

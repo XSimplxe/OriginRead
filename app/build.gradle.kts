@@ -23,8 +23,8 @@ android {
         applicationId = "com.yuanyue.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 117
-        versionName = "1.1.7"
+        versionCode = 200
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -122,6 +122,7 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

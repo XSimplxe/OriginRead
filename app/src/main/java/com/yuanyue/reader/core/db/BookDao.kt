@@ -21,14 +21,32 @@ interface BookDao {
 
     @Query(
         "UPDATE books SET lastReadPosition = :chapterIndex, totalPages = :pageIndex, " +
-            "progressPercent = :progress WHERE id = :bookId",
+            "progressPercent = :progress, lastReadAt = :lastReadAt, " +
+            "readingSeconds = readingSeconds + :readingDelta WHERE id = :bookId",
     )
     suspend fun updateProgress(
         bookId: Long,
         chapterIndex: Int,
         pageIndex: Int,
         progress: Float,
+        lastReadAt: Long,
+        readingDelta: Long,
     )
+
+    @Query(
+        "UPDATE books SET title = :title, author = :author, description = :description, " +
+            "tags = :tags WHERE id = :bookId",
+    )
+    suspend fun updateInfo(
+        bookId: Long,
+        title: String,
+        author: String?,
+        description: String?,
+        tags: String,
+    )
+
+    @Query("UPDATE books SET isFavorite = :favorite WHERE id = :bookId")
+    suspend fun updateFavorite(bookId: Long, favorite: Boolean)
 
     @Delete
     suspend fun delete(book: BookEntity)

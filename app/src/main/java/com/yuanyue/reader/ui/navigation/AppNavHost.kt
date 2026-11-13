@@ -20,6 +20,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.yuanyue.reader.core.AppContainer
 import com.yuanyue.reader.core.viewModelFactory
+import com.yuanyue.reader.model.BookFormat
 import com.yuanyue.reader.ui.home.ArticleDetailScreen
 import com.yuanyue.reader.ui.home.ArticleDetailViewModel
 import com.yuanyue.reader.ui.home.ArticleListScreen
@@ -32,6 +33,8 @@ import com.yuanyue.reader.ui.home.HotArticleScreen
 import com.yuanyue.reader.ui.home.HotArticleViewModel
 import com.yuanyue.reader.ui.home.HotSearchScreen
 import com.yuanyue.reader.ui.home.HotSearchViewModel
+import com.yuanyue.reader.ui.library.BookDetailScreen
+import com.yuanyue.reader.ui.library.BookDetailViewModel
 import com.yuanyue.reader.ui.library.BookshelfScreen
 import com.yuanyue.reader.ui.library.LibraryViewModel
 import com.yuanyue.reader.ui.reader.ReaderScreen
@@ -52,8 +55,11 @@ import com.yuanyue.reader.ui.comic.ComicReaderScreen
 import com.yuanyue.reader.ui.comic.ComicReaderViewModel
 import com.yuanyue.reader.ui.comic.ComicSourceManagerScreen
 import com.yuanyue.reader.ui.comic.ComicSourceManagerViewModel
+import com.yuanyue.reader.ui.comic.LocalComicReaderScreen
+import com.yuanyue.reader.ui.comic.LocalComicReaderViewModel
 import com.yuanyue.reader.ui.settings.SettingsScreen
 import com.yuanyue.reader.ui.settings.SettingsViewModel
+import com.yuanyue.reader.ui.settings.ThemeSettingsScreen
 
 @Composable
 fun AppNavHost(container: AppContainer) {
@@ -142,8 +148,8 @@ fun AppNavHost(container: AppContainer) {
                     localViewModel = localViewModel,
                     onlineViewModel = onlineViewModel,
                     comicViewModel = comicViewModel,
-                    onOpenLocalBook = { bookId ->
-                        navController.navigate(Routes.reader(bookId))
+                    onOpenBookDetail = { bookId ->
+                        navController.navigate(Routes.bookDetail(bookId))
                     },
                     onOpenOnlineBook = { bookId ->
                         navController.navigate(Routes.onlineBook(bookId))
@@ -181,7 +187,22 @@ fun AppNavHost(container: AppContainer) {
                         SettingsViewModel(container.settingsRepository)
                     },
                 )
-                SettingsScreen(viewModel = viewModel)
+                SettingsScreen(
+                    viewModel = viewModel,
+                    onOpenTheme = { navController.navigate(Routes.THEME_SETTINGS) },
+                )
+            }
+
+            composable(Routes.THEME_SETTINGS) {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        SettingsViewModel(container.settingsRepository)
+                    },
+                )
+                ThemeSettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
             }
 
             composable(Routes.FEED_MANAGER) {
@@ -359,6 +380,51 @@ fun AppNavHost(container: AppContainer) {
                     },
                 )
                 ArticleDetailScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.BOOK_DETAIL,
+                arguments = listOf(navArgument("bookId") { type = NavType.LongType }),
+            ) { entry ->
+                val bookId = entry.arguments?.getLong("bookId") ?: 0L
+                val viewModel: BookDetailViewModel = viewModel(
+                    factory = viewModelFactory {
+                        BookDetailViewModel(
+                            bookId = bookId,
+                            repository = container.libraryRepository,
+                        )
+                    },
+                )
+                BookDetailScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onRead = { id ->
+                        if (viewModel.book.value?.format == BookFormat.EPUB_COMIC) {
+                            navController.navigate(Routes.localComic(id))
+                        } else {
+                            navController.navigate(Routes.reader(id))
+                        }
+                    },
+                )
+            }
+
+            composable(
+                route = Routes.LOCAL_COMIC,
+                arguments = listOf(navArgument("bookId") { type = NavType.LongType }),
+            ) { entry ->
+                val bookId = entry.arguments?.getLong("bookId") ?: 0L
+                val viewModel: LocalComicReaderViewModel = viewModel(
+                    factory = viewModelFactory {
+                        LocalComicReaderViewModel(
+                            bookId = bookId,
+                            repository = container.libraryRepository,
+                        )
+                    },
+                )
+                LocalComicReaderScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
                 )

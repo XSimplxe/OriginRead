@@ -6,6 +6,14 @@ import androidx.room.PrimaryKey
 enum class BookFormat {
     TXT,
     EPUB,
+    EPUB_COMIC,
+    PDF,
+    DOCX,
+    RTF,
+    HTML,
+    FB2,
+    MOBI,
+    AZW3,
 }
 
 @Entity(tableName = "books")
@@ -20,6 +28,11 @@ data class BookEntity(
     val lastReadPosition: Int = 0,
     val totalPages: Int = 0,
     val progressPercent: Float = 0f,
+    val description: String? = null,
+    val isFavorite: Boolean = false,
+    val tags: String = "",
+    val lastReadAt: Long = 0L,
+    val readingSeconds: Long = 0L,
     val addedAt: Long = System.currentTimeMillis(),
 )
 

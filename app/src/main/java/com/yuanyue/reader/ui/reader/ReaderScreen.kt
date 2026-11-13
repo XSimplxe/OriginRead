@@ -21,11 +21,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -69,6 +73,7 @@ import com.yuanyue.reader.data.PageMode
 import com.yuanyue.reader.data.ReaderSettings
 import com.yuanyue.reader.data.ReaderTheme
 import com.yuanyue.reader.model.BookChapter
+import com.yuanyue.reader.ui.theme.LocalAppDarkMode
 import kotlin.math.roundToInt
 
 @Composable
@@ -144,6 +149,9 @@ fun ReaderScreen(
                 onThemeChange = viewModel::updateTheme,
                 onPageModeChange = viewModel::updatePageMode,
                 onSerifFontChange = viewModel::updateSerifFont,
+                onParagraphSpacingChange = viewModel::updateParagraphSpacing,
+                onContentPaddingChange = viewModel::updateContentPadding,
+                onIndentFirstLineChange = viewModel::updateIndentFirstLine,
             )
         }
     }
@@ -186,13 +194,34 @@ internal fun ReaderContent(
     onThemeChange: (ReaderTheme) -> Unit,
     onPageModeChange: (PageMode) -> Unit,
     onSerifFontChange: (Boolean) -> Unit,
+    onParagraphSpacingChange: (Float) -> Unit,
+    onContentPaddingChange: (Float) -> Unit,
+    onIndentFirstLineChange: (Boolean) -> Unit,
 ) {
-    val palette = readerPalette(settings.theme)
+    val palette = readerPalette(settings.theme, LocalAppDarkMode.current)
     val density = LocalDensity.current
     var controlsVisible by remember { mutableStateOf(true) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var currentPage by remember(chapterIndex) { mutableIntStateOf(initialPage.coerceAtLeast(0)) }
+    val freeScroll = settings.pageMode == PageMode.FREE_SCROLL &&
+        chapters.size > 1 &&
+        chapters.all { it.content.isNotBlank() }
+    val freeHorizontal = settings.pageMode == PageMode.FREE_HORIZONTAL &&
+        chapters.size > 1 &&
+        chapters.all { it.content.isNotBlank() }
+    var freeChapterIndex by remember(chapterIndex) {
+        mutableIntStateOf(chapterIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)))
+    }
+    var freeHorizontalChapter by remember(chapterIndex) {
+        mutableIntStateOf(chapterIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)))
+    }
+    val displayChapterIndex = when {
+        freeHorizontal -> freeHorizontalChapter
+        freeScroll -> freeChapterIndex
+        else -> chapterIndex
+    }
+    val displayChapterTitle = chapters.getOrNull(displayChapterIndex)?.title ?: chapter.title
 
     val textStyle = TextStyle(
         color = palette.text,
@@ -209,7 +238,7 @@ internal fun ReaderContent(
                 detectTapGestures { controlsVisible = !controlsVisible }
             },
     ) {
-        val horizontalPadding = 24.dp
+        val horizontalPadding = settings.contentPadding.coerceIn(8f, 40f).dp
         val topPadding = 88.dp
         val bottomPadding = 72.dp
         val pageWidth = (maxWidth - horizontalPadding * 2)
@@ -221,9 +250,143 @@ internal fun ReaderContent(
             .roundToInt()
             .coerceAtLeast(1)
 
-        val pages = rememberPagedText(chapter.content, textStyle, pageWidth, pageHeight)
+        val displayedContent = remember(chapter.content, settings.indentFirstLine) {
+            if (settings.indentFirstLine) indentParagraphs(chapter.content) else chapter.content
+        }
+        val pages = rememberPagedText(displayedContent, textStyle, pageWidth, pageHeight)
 
-        if (pages == null) {
+        // 定时保存一次进度，同时让阅读摘要里的累计阅读时长能够增长。
+        LaunchedEffect(chapterIndex, settings.pageMode, pages?.size) {
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                val index = when {
+                    freeHorizontal -> freeHorizontalChapter
+                    freeScroll -> freeChapterIndex
+                    else -> chapterIndex
+                }
+                val page = if (freeHorizontal || freeScroll) 0 else currentPage
+                val total = if (freeHorizontal || freeScroll) chapters.size else (pages?.size ?: 0)
+                onProgress(index, page, total)
+            }
+        }
+
+        if (freeHorizontal) {
+            key(chapterIndex) {
+                val pagerState = rememberPagerState(
+                    initialPage = chapterIndex.coerceIn(0, chapters.lastIndex),
+                    pageCount = { chapters.size },
+                )
+                LaunchedEffect(pagerState) {
+                    snapshotFlow { pagerState.currentPage }.collect { page ->
+                        freeHorizontalChapter = page.coerceIn(0, chapters.lastIndex)
+                        onProgress(freeHorizontalChapter, 0, chapters.size)
+                    }
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    val item = chapters[page]
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                start = horizontalPadding,
+                                top = topPadding,
+                                end = horizontalPadding,
+                                bottom = bottomPadding,
+                            ),
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = textStyle.copy(
+                                fontSize = (settings.fontSizeSp + 5).sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            modifier = Modifier.padding(bottom = 14.dp),
+                        )
+                        item.content.split('\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .forEach { paragraph ->
+                                BasicText(
+                                    text = if (settings.indentFirstLine) {
+                                        "\u3000\u3000$paragraph"
+                                    } else {
+                                        paragraph
+                                    },
+                                    style = textStyle,
+                                    modifier = Modifier.padding(
+                                        bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
+                                    ),
+                                )
+                            }
+                    }
+                }
+            }
+        } else if (freeScroll) {
+            key(chapterIndex) {
+                val listState = remember(chapterIndex) {
+                    androidx.compose.foundation.lazy.LazyListState(
+                        firstVisibleItemIndex = chapterIndex.coerceIn(0, chapters.lastIndex),
+                        firstVisibleItemScrollOffset = 0,
+                    )
+                }
+                LaunchedEffect(chapterIndex) {
+                    if (chapterIndex in chapters.indices) {
+                        listState.scrollToItem(chapterIndex)
+                    }
+                }
+                LaunchedEffect(listState, chapters.size) {
+                    snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
+                        freeChapterIndex = index.coerceIn(0, chapters.lastIndex)
+                        onProgress(freeChapterIndex, 0, chapters.size)
+                    }
+                }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = horizontalPadding,
+                        top = topPadding,
+                        end = horizontalPadding,
+                        bottom = bottomPadding,
+                    ),
+                ) {
+                    itemsIndexed(chapters, key = { index, _ -> index }) { _, item ->
+                        Column(
+                            modifier = Modifier.padding(bottom = 20.dp),
+                        ) {
+                            Text(
+                                text = item.title,
+                                style = textStyle.copy(
+                                    fontSize = (settings.fontSizeSp + 5).sp,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                                modifier = Modifier.padding(bottom = 14.dp),
+                            )
+                            item.content.split('\n')
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                                .forEach { paragraph ->
+                                    BasicText(
+                                        text = if (settings.indentFirstLine) {
+                                            "\u3000\u3000$paragraph"
+                                        } else {
+                                            paragraph
+                                        },
+                                        style = textStyle,
+                                        modifier = Modifier.padding(
+                                            bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
+                                        ),
+                                    )
+                                }
+                        }
+                    }
+                }
+            }
+        } else if (pages == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -255,7 +418,10 @@ internal fun ReaderContent(
             ) {
                 Text("本章暂无内容", color = palette.secondary)
             }
-        } else if (settings.pageMode == PageMode.HORIZONTAL) {
+        } else if (
+            settings.pageMode == PageMode.HORIZONTAL ||
+            settings.pageMode == PageMode.FREE_HORIZONTAL
+        ) {
             key(chapterIndex) {
                 val startPage = initialPage.coerceIn(0, pages.lastIndex)
                 val pagerState = rememberPagerState(
@@ -344,11 +510,15 @@ internal fun ReaderContent(
             exit = fadeOut(),
         ) {
             ReaderBottomBar(
-                chapterTitle = chapter.title,
-                chapterIndex = chapterIndex,
+                chapterTitle = displayChapterTitle,
+                chapterIndex = displayChapterIndex,
                 chapterCount = chapterCount,
-                pageInfo = pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
-                    "${(currentPage + 1).coerceAtMost(pageList.size)} / ${pageList.size}"
+                pageInfo = if (freeHorizontal || freeScroll) {
+                    null
+                } else {
+                    pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
+                        "${(currentPage + 1).coerceAtMost(pageList.size)} / ${pageList.size}"
+                    }
                 },
                 backgroundColor = palette.background,
                 contentColor = palette.text,
@@ -359,9 +529,9 @@ internal fun ReaderContent(
 
     if (showToc) {
         val tocState = rememberLazyListState()
-        LaunchedEffect(chapterIndex) {
-            if (chapterIndex in chapters.indices) {
-                tocState.scrollToItem(chapterIndex)
+        LaunchedEffect(displayChapterIndex) {
+            if (displayChapterIndex in chapters.indices) {
+                tocState.scrollToItem(displayChapterIndex)
             }
         }
         ModalBottomSheet(
@@ -391,12 +561,12 @@ internal fun ReaderContent(
                     ) {
                         Text(
                             text = item.title,
-                            fontWeight = if (index == chapterIndex) {
+                            fontWeight = if (index == displayChapterIndex) {
                                 FontWeight.Bold
                             } else {
                                 FontWeight.Normal
                             },
-                            color = if (index == chapterIndex) {
+                            color = if (index == displayChapterIndex) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurface
@@ -419,6 +589,9 @@ internal fun ReaderContent(
             onThemeChange = onThemeChange,
             onPageModeChange = onPageModeChange,
             onSerifFontChange = onSerifFontChange,
+            onParagraphSpacingChange = onParagraphSpacingChange,
+            onContentPaddingChange = onContentPaddingChange,
+            onIndentFirstLineChange = onIndentFirstLineChange,
         )
     }
 }
@@ -514,6 +687,9 @@ private fun ReaderSettingsSheet(
     onThemeChange: (ReaderTheme) -> Unit,
     onPageModeChange: (PageMode) -> Unit,
     onSerifFontChange: (Boolean) -> Unit,
+    onParagraphSpacingChange: (Float) -> Unit,
+    onContentPaddingChange: (Float) -> Unit,
+    onIndentFirstLineChange: (Boolean) -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -547,9 +723,25 @@ private fun ReaderSettingsSheet(
                     valueRange = 1.2f..2.2f,
                 )
             }
+            Column {
+                Text("段间距：${"%.0f".format(settings.paragraphSpacing)}")
+                Slider(
+                    value = settings.paragraphSpacing,
+                    onValueChange = onParagraphSpacingChange,
+                    valueRange = 0f..24f,
+                )
+            }
+            Column {
+                Text("页边距：${"%.0f".format(settings.contentPadding)}")
+                Slider(
+                    value = settings.contentPadding,
+                    onValueChange = onContentPaddingChange,
+                    valueRange = 8f..40f,
+                )
+            }
             Text("主题")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReaderTheme.entries.forEach { theme ->
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ReaderTheme.entries) { theme ->
                     FilterChip(
                         selected = settings.theme == theme,
                         onClick = { onThemeChange(theme) },
@@ -558,14 +750,31 @@ private fun ReaderSettingsSheet(
                 }
             }
             Text("翻页")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PageMode.entries.forEach { mode ->
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(PageMode.entries) { mode ->
                     FilterChip(
                         selected = settings.pageMode == mode,
                         onClick = { onPageModeChange(mode) },
-                        label = { Text(if (mode == PageMode.HORIZONTAL) "横向翻页" else "纵向滚动") },
+                        label = { Text(pageModeLabel(mode)) },
                     )
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("首行缩进")
+                    Text(
+                        text = "每个自然段首行空两格",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = settings.indentFirstLine,
+                    onCheckedChange = onIndentFirstLineChange,
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -594,7 +803,21 @@ private data class ReaderPalette(
     val secondary: Color,
 )
 
-private fun readerPalette(theme: ReaderTheme): ReaderPalette = when (theme) {
+private fun readerPalette(theme: ReaderTheme, appDark: Boolean): ReaderPalette = when (theme) {
+    ReaderTheme.FOLLOW_APP -> if (appDark) {
+        ReaderPalette(
+            background = Color(0xFF141414),
+            text = Color(0xFFB8B8B8),
+            secondary = Color(0xFF6D6D6D),
+        )
+    } else {
+        ReaderPalette(
+            background = Color(0xFFFAFAF8),
+            text = Color(0xFF202124),
+            secondary = Color(0xFF7A7A7A),
+        )
+    }
+
     ReaderTheme.WHITE -> ReaderPalette(
         background = Color(0xFFFAFAF8),
         text = Color(0xFF202124),
@@ -621,8 +844,21 @@ private fun readerPalette(theme: ReaderTheme): ReaderPalette = when (theme) {
 }
 
 private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
+    ReaderTheme.FOLLOW_APP -> "跟随应用"
     ReaderTheme.WHITE -> "白纸"
     ReaderTheme.SEPIA -> "羊皮纸"
     ReaderTheme.GREEN -> "护眼绿"
     ReaderTheme.DARK -> "夜间"
 }
+
+private fun pageModeLabel(mode: PageMode): String = when (mode) {
+    PageMode.FREE_HORIZONTAL -> "横向自由翻阅"
+    PageMode.FREE_SCROLL -> "自由滚动"
+    PageMode.HORIZONTAL -> "横向翻页"
+    PageMode.VERTICAL -> "纵向滚动"
+}
+
+private fun indentParagraphs(text: String): String =
+    text.lineSequence().joinToString("\n") { line ->
+        if (line.isBlank()) "" else "\u3000\u3000${line.trimStart()}"
+    }

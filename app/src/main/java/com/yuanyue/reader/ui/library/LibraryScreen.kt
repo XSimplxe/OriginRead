@@ -14,17 +14,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,19 +47,43 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.yuanyue.reader.data.BookTags
 import com.yuanyue.reader.model.BookEntity
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun LocalBooksContent(
     viewModel: LibraryViewModel,
-    onOpenBook: (Long) -> Unit,
+    onOpenBookDetail: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val books by viewModel.books.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<BookEntity?>(null) }
+    var query by remember { mutableStateOf("") }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
+
+    val allTags = remember(books) {
+        books.flatMap { BookTags.parse(it.tags) }.distinct().sorted()
+    }
+    val filteredBooks = remember(books, query, favoritesOnly, selectedTag) {
+        val keyword = query.trim()
+        books.filter { book ->
+            val matchesKeyword = keyword.isBlank() ||
+                book.title.contains(keyword, ignoreCase = true) ||
+                book.author.orEmpty().contains(keyword, ignoreCase = true) ||
+                book.description.orEmpty().contains(keyword, ignoreCase = true) ||
+                BookTags.parse(book.tags).any { it.contains(keyword, ignoreCase = true) }
+            val matchesFavorite = !favoritesOnly || book.isFavorite
+            val matchesTag = selectedTag == null || selectedTag in BookTags.parse(book.tags)
+            matchesKeyword && matchesFavorite && matchesTag
+        }
+    }
 
     if (books.isEmpty()) {
         Box(
@@ -77,12 +108,87 @@ fun LocalBooksContent(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(books, key = { it.id }) { book ->
-                BookCard(
-                    book = book,
-                    onClick = { onOpenBook(book.id) },
-                    onDelete = { pendingDelete = book },
+            item {
+                ReadingSummaryCard(books)
+            }
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("搜索书名、作者、标签") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "清空搜索")
+                            }
+                        }
+                    },
+                    singleLine = true,
                 )
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = !favoritesOnly && selectedTag == null,
+                            onClick = {
+                                favoritesOnly = false
+                                selectedTag = null
+                            },
+                            label = { Text("全部") },
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = favoritesOnly,
+                            onClick = {
+                                favoritesOnly = !favoritesOnly
+                                selectedTag = null
+                            },
+                            label = { Text("收藏") },
+                        )
+                    }
+                    items(allTags) { tag ->
+                        FilterChip(
+                            selected = selectedTag == tag,
+                            onClick = {
+                                selectedTag = if (selectedTag == tag) null else tag
+                                favoritesOnly = false
+                            },
+                            label = { Text(tag) },
+                        )
+                    }
+                }
+            }
+            if (filteredBooks.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("没有匹配的书籍", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = {
+                            query = ""
+                            favoritesOnly = false
+                            selectedTag = null
+                        }) {
+                            Text("清除筛选")
+                        }
+                    }
+                }
+            } else {
+                items(filteredBooks, key = { it.id }) { book ->
+                    BookCard(
+                        book = book,
+                        onClick = { onOpenBookDetail(book.id) },
+                        onToggleFavorite = { viewModel.toggleFavorite(book) },
+                        onDelete = { pendingDelete = book },
+                    )
+                }
             }
         }
     }
@@ -114,9 +220,56 @@ fun LocalBooksContent(
 }
 
 @Composable
+private fun ReadingSummaryCard(books: List<BookEntity>) {
+    val reading = books.count { it.progressPercent > 0.01f && it.progressPercent < 0.99f }
+    val finished = books.count { it.progressPercent >= 0.99f }
+    val favorites = books.count { it.isFavorite }
+    val totalSeconds = books.sumOf { it.readingSeconds }
+    val recent = books.filter { it.lastReadAt > 0 }.maxByOrNull { it.lastReadAt }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "阅读摘要",
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "共 ${books.size} 本 · 在读 $reading · 已读完 $finished · 收藏 $favorites",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = "累计阅读 ${formatDuration(totalSeconds)}",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            recent?.let {
+                Text(
+                    text = "最近在读《${it.title}》，已读 ${"%.0f".format(it.progressPercent * 100)}%",
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun BookCard(
     book: BookEntity,
     onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(
@@ -137,6 +290,7 @@ private fun BookCard(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = book.title,
@@ -151,22 +305,60 @@ private fun BookCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val tags = BookTags.parse(book.tags)
+                if (tags.isNotEmpty()) {
+                    Text(
+                        text = tags.take(4).joinToString(" · "),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (book.progressPercent > 0f) {
                     LinearProgressIndicator(
                         progress = { book.progressPercent },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
+                            .padding(top = 6.dp),
                     )
+                }
+                val status = buildString {
+                    if (book.progressPercent > 0f) {
+                        append("已读 ${"%.0f".format(book.progressPercent * 100)}%")
+                    }
+                    if (book.lastReadAt > 0) {
+                        if (isNotEmpty()) append(" · ")
+                        append("上次 ${formatShortDate(book.lastReadAt)}")
+                    }
+                }
+                if (status.isNotBlank()) {
                     Text(
-                        text = "已读 ${"%.0f".format(book.progressPercent * 100)}%",
+                        text = status,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "移除")
+            Column {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (book.isFavorite) {
+                            Icons.Default.Favorite
+                        } else {
+                            Icons.Default.FavoriteBorder
+                        },
+                        contentDescription = if (book.isFavorite) "取消收藏" else "收藏",
+                        tint = if (book.isFavorite) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "移除")
+                }
             }
         }
     }
@@ -205,3 +397,18 @@ private fun BookCover(book: BookEntity) {
         }
     }
 }
+
+private fun formatDuration(seconds: Long): String {
+    if (seconds <= 0) return "0 分钟"
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    return when {
+        hours > 0 -> "${hours} 小时 ${minutes % 60} 分钟"
+        minutes > 0 -> "${minutes} 分钟"
+        else -> "${seconds} 秒"
+    }
+}
+
+private fun formatShortDate(epochMillis: Long): String = runCatching {
+    SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(epochMillis))
+}.getOrDefault("")

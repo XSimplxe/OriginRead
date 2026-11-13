@@ -11,6 +11,7 @@ import com.yuanyue.reader.data.OperationResult
 import com.yuanyue.reader.model.BookEntity
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class LibraryViewModel(
     private val libraryRepository: LibraryRepository,
@@ -35,4 +36,10 @@ class LibraryViewModel(
     }
 
     suspend fun deleteBook(book: BookEntity) = libraryRepository.deleteBook(book)
+
+    fun toggleFavorite(book: BookEntity) {
+        viewModelScope.launch {
+            libraryRepository.updateFavorite(book.id, !book.isFavorite)
+        }
+    }
 }

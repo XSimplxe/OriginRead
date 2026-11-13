@@ -58,7 +58,7 @@ fun BookshelfScreen(
     localViewModel: LibraryViewModel,
     onlineViewModel: OnlineLibraryViewModel,
     comicViewModel: ComicLibraryViewModel,
-    onOpenLocalBook: (Long) -> Unit,
+    onOpenBookDetail: (Long) -> Unit,
     onOpenOnlineBook: (Long) -> Unit,
     onOpenComic: (Long) -> Unit,
     onOpenBookSourceManager: () -> Unit,
@@ -142,7 +142,7 @@ fun BookshelfScreen(
             when (selectedTab) {
                 0 -> LocalBooksContent(
                     viewModel = localViewModel,
-                    onOpenBook = onOpenLocalBook,
+                    onOpenBookDetail = onOpenBookDetail,
                     modifier = Modifier.fillMaxSize(),
                 )
 
