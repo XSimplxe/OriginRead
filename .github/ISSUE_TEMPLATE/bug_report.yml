@@ -1,0 +1,50 @@
+name: Bug report
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索是否已有相同 issue。
+        请勿附带签名文件、Cookie、私人书源或个人信息。
+  - type: input
+    id: version
+    attributes:
+      label: 原阅版本
+      placeholder: 例如 1.2.0
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android 版本与设备
+      placeholder: 例如 Android 14 / Pixel 9 Pro
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: 1. ... 2. ... 3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 可粘贴 logcat，或拖入截图（请隐去个人信息）
+    validations:
+      required: false
