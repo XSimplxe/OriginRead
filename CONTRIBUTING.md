@@ -1,10 +1,10 @@
-# 贡献指南
+﻿# 贡献指南
 
 感谢你愿意改进原阅。
 
 ## 开始之前
 
-- 先搜索已有的 [Issues](https://github.com/hothub111/Yuanyue/issues)，避免重复。
+- 先搜索已有的 [Issues](https://github.com/hothub111/OriginRead/issues)，避免重复。
 - 大改动请先开 issue 说明目标和方案，再提交 PR。
 - 请勿在 issue、PR 或截图中公开签名文件、口令、Cookie 或带个人信息的书源。
 
@@ -49,3 +49,4 @@ docs: 更新 1.2.0 更新日志
 ## 许可
 
 提交的代码默认以 [MIT](LICENSE) 许可发布。
+
