@@ -1,9 +1,9 @@
-# 原阅 · Yuanyue
+﻿# 原阅 · Yuanyue
 
 > 一个安静、克制的 Android 阅读器。
 
 [![Version](https://img.shields.io/badge/version-1.2.0-5B5BD6?style=flat-square)](CHANGELOG.md)
-[![Android CI](https://github.com/hothub111/OriginRead/actions/workflows/android.yml/badge.svg)](https://github.com/hothub111/OriginRead/actions/workflows/android.yml)
+[![Android CI](https://github.com/XSimplxe/OriginRead/actions/workflows/android.yml/badge.svg)](https://github.com/XSimplxe/OriginRead/actions/workflows/android.yml)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
@@ -58,7 +58,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/hothub111/OriginRead/releases) 下载最新的 APK。
+从 [Releases](https://github.com/XSimplxe/OriginRead/releases) 下载最新的 APK。
 
 - 最低 Android 8.0（API 26）
 - 目标 Android 15（API 35）
@@ -71,7 +71,7 @@
 需要 JDK 17、Android SDK 35。
 
 ```bash
-git clone https://github.com/hothub111/OriginRead.git
+git clone https://github.com/XSimplxe/OriginRead.git
 cd OriginRead
 ./gradlew assembleDebug
 ```
@@ -150,4 +150,5 @@ app/src/main/java/com/yuanyue/reader/
 [Jetpack Compose](https://developer.android.com/jetpack/compose) · [Coil](https://coil-kt.github.io/coil/) · [OkHttp](https://square.github.io/okhttp/) · [Jsoup](https://jsoup.org/) · [PDFBox-Android](https://github.com/TomRoush/PdfBox-Android) · [Legado](https://github.com/gedoor/legado) 书源格式
 
 完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 
