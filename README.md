@@ -1,4 +1,4 @@
-﻿# 原阅 · Yuanyue
+# 原阅 · Yuanyue
 
 > 一个安静、克制的 Android 阅读器。
 
@@ -63,6 +63,7 @@
 - 最低 Android 8.0（API 26）
 - 目标 Android 15（API 35）
 - 正式包约 8 MB（R8 压缩）
+- 仅支持 32 位的设备请选择 `armeabi-v7a` 安装包
 - 升级安装请保留同一签名；正式包使用 v2 + v3 签名
 
 ## 从源码构建
@@ -71,7 +72,7 @@
 
 ```bash
 git clone https://github.com/hothub111/OriginRead.git
-cd Yuanyue
+cd OriginRead
 ./gradlew assembleDebug
 ```
 
@@ -80,6 +81,14 @@ cd Yuanyue
 ```bash
 ./gradlew assembleRelease
 ```
+
+32 位（armeabi-v7a）包：
+
+```bash
+./gradlew assembleRelease -Pabi32
+```
+
+产物为 `app/build/outputs/apk/release/app-armeabi-v7a-release.apk`。
 
 正式签名依赖本地 `release/keystore.properties` 与 `release/yuanyue-release.jks`，二者不会提交到仓库。没有签名文件时请使用 debug 构建。
 

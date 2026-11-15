@@ -29,7 +29,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            if (!project.hasProperty("abi32")) {
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            }
+        }
+    }
+
+    // ./gradlew assembleRelease -Pabi32 生成仅 armeabi-v7a 的 32 位包
+    splits {
+        abi {
+            isEnable = project.hasProperty("abi32")
+            reset()
+            include("armeabi-v7a")
+            isUniversalApk = false
         }
     }
 

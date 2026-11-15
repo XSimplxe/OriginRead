@@ -28,6 +28,7 @@
 - 调色盘改为可滚动底部面板，增加快捷色块，避免控件被小屏挤出。
 - 图片地址解析支持 `data-src`、`data-original`、`data-lazy-src`、`data-echo`、`srcset` 等懒加载属性。
 - 正式包开启 R8 代码与资源压缩，APK 从 19.5 MB 降至约 8 MB，功能和 PDF 文字提取保持可用。
+- 提供 armeabi-v7a 32 位安装包，兼容仅支持 32 位的设备。
 
 ### 修复
 
