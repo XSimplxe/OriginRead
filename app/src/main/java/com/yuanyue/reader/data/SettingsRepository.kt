@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore by preferencesDataStore(name = "reader_settings")
@@ -26,6 +27,14 @@ enum class PageMode(val key: String) {
     FREE_SCROLL("free_scroll"),
     HORIZONTAL("horizontal"),
     VERTICAL("vertical"),
+}
+
+enum class ReaderFont(val label: String) {
+    DEFAULT("系统默认"),
+    SERIF("衬线"),
+    MONOSPACE("等宽"),
+    CURSIVE("手写"),
+    SANS_SERIF("无衬线"),
 }
 
 enum class ThemeMode(val label: String) {
@@ -93,10 +102,27 @@ data class ReaderSettings(
     val theme: ReaderTheme = ReaderTheme.FOLLOW_APP,
     val pageMode: PageMode = PageMode.FREE_HORIZONTAL,
     val serifFont: Boolean = false,
+    val fontFamily: ReaderFont = ReaderFont.DEFAULT,
     val paragraphSpacing: Float = 8f,
     val contentPadding: Float = 24f,
     val indentFirstLine: Boolean = true,
+    val ttsVoiceName: String? = null,
+    val ttsRate: Float = 1f,
+    val ttsEnginePackage: String? = null,
+    val ttsCatalogJson: String? = null,
 )
+
+data class ProfileSettings(
+    val nickname: String = "书友",
+)
+
+data class AiSettings(
+    val apiKey: String = "",
+    val baseUrl: String = "https://api.openai.com/v1",
+    val model: String = "gpt-4o-mini",
+) {
+    val isConfigured: Boolean get() = apiKey.isNotBlank()
+}
 
 class SettingsRepository(private val context: Context) {
     private object Keys {
@@ -105,13 +131,22 @@ class SettingsRepository(private val context: Context) {
         val theme = stringPreferencesKey("reader_theme")
         val pageMode = stringPreferencesKey("page_mode")
         val serifFont = booleanPreferencesKey("serif_font")
+        val fontFamily = stringPreferencesKey("font_family")
         val paragraphSpacing = floatPreferencesKey("paragraph_spacing")
         val contentPadding = floatPreferencesKey("content_padding")
         val indentFirstLine = booleanPreferencesKey("indent_first_line")
+        val ttsVoice = stringPreferencesKey("tts_voice")
+        val ttsRate = floatPreferencesKey("tts_rate")
+        val ttsEngine = stringPreferencesKey("tts_engine")
+        val ttsCatalog = stringPreferencesKey("tts_catalog")
 
         val themeMode = stringPreferencesKey("app_theme_mode")
         val customColors = booleanPreferencesKey("app_custom_colors")
         val onboardingCompleted = booleanPreferencesKey("onboarding_completed")
+        val nickname = stringPreferencesKey("profile_nickname")
+        val aiApiKey = stringPreferencesKey("ai_api_key")
+        val aiBaseUrl = stringPreferencesKey("ai_base_url")
+        val aiModel = stringPreferencesKey("ai_model")
 
         val lightColors = mapOf(
             PaletteRole.PRIMARY to longPreferencesKey("light_primary"),
@@ -142,9 +177,16 @@ class SettingsRepository(private val context: Context) {
                 PageMode.valueOf(prefs[Keys.pageMode] ?: PageMode.FREE_HORIZONTAL.name)
             }.getOrDefault(PageMode.FREE_HORIZONTAL),
             serifFont = prefs[Keys.serifFont] ?: false,
+            fontFamily = runCatching {
+                ReaderFont.valueOf(prefs[Keys.fontFamily] ?: ReaderFont.DEFAULT.name)
+            }.getOrDefault(ReaderFont.DEFAULT),
             paragraphSpacing = prefs[Keys.paragraphSpacing] ?: 8f,
             contentPadding = prefs[Keys.contentPadding] ?: 24f,
             indentFirstLine = prefs[Keys.indentFirstLine] ?: true,
+            ttsVoiceName = prefs[Keys.ttsVoice],
+            ttsRate = prefs[Keys.ttsRate] ?: 1f,
+            ttsEnginePackage = prefs[Keys.ttsEngine],
+            ttsCatalogJson = prefs[Keys.ttsCatalog],
         )
     }
 
@@ -162,6 +204,24 @@ class SettingsRepository(private val context: Context) {
     val onboardingCompleted: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[Keys.onboardingCompleted] ?: false
     }
+
+    val profile: Flow<ProfileSettings> = context.settingsDataStore.data.map { prefs ->
+        ProfileSettings(
+            nickname = prefs[Keys.nickname]?.takeIf { it.isNotBlank() } ?: "书友",
+        )
+    }
+
+    val ai: Flow<AiSettings> = context.settingsDataStore.data.map { prefs ->
+        AiSettings(
+            apiKey = prefs[Keys.aiApiKey].orEmpty(),
+            baseUrl = prefs[Keys.aiBaseUrl]
+                ?.takeIf { it.isNotBlank() }
+                ?: "https://api.openai.com/v1",
+            model = prefs[Keys.aiModel]?.takeIf { it.isNotBlank() } ?: "gpt-4o-mini",
+        )
+    }
+
+    suspend fun currentAiSettings(): AiSettings = ai.first()
 
     suspend fun setOnboardingCompleted() {
         context.settingsDataStore.edit { it[Keys.onboardingCompleted] = true }
@@ -187,6 +247,24 @@ class SettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[Keys.serifFont] = value }
     }
 
+    suspend fun updateFontFamily(value: ReaderFont) {
+        context.settingsDataStore.edit { it[Keys.fontFamily] = value.name }
+    }
+
+    suspend fun updateNickname(value: String) {
+        context.settingsDataStore.edit {
+            it[Keys.nickname] = value.trim().ifBlank { "书友" }
+        }
+    }
+
+    suspend fun updateAiSettings(apiKey: String, baseUrl: String, model: String) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[Keys.aiApiKey] = apiKey.trim()
+            prefs[Keys.aiBaseUrl] = baseUrl.trim().ifBlank { "https://api.openai.com/v1" }
+            prefs[Keys.aiModel] = model.trim().ifBlank { "gpt-4o-mini" }
+        }
+    }
+
     suspend fun updateParagraphSpacing(value: Float) {
         context.settingsDataStore.edit { it[Keys.paragraphSpacing] = value }
     }
@@ -197,6 +275,42 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateIndentFirstLine(value: Boolean) {
         context.settingsDataStore.edit { it[Keys.indentFirstLine] = value }
+    }
+
+    suspend fun updateTtsVoice(name: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (name.isNullOrBlank()) {
+                prefs.remove(Keys.ttsVoice)
+            } else {
+                prefs[Keys.ttsVoice] = name
+            }
+        }
+    }
+
+    suspend fun updateTtsRate(value: Float) {
+        context.settingsDataStore.edit {
+            it[Keys.ttsRate] = value.coerceIn(0.5f, 2.0f)
+        }
+    }
+
+    suspend fun updateTtsEngine(packageName: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (packageName.isNullOrBlank()) {
+                prefs.remove(Keys.ttsEngine)
+            } else {
+                prefs[Keys.ttsEngine] = packageName
+            }
+        }
+    }
+
+    suspend fun updateTtsCatalog(json: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (json.isNullOrBlank()) {
+                prefs.remove(Keys.ttsCatalog)
+            } else {
+                prefs[Keys.ttsCatalog] = json
+            }
+        }
     }
 
     suspend fun updateThemeMode(value: ThemeMode) {

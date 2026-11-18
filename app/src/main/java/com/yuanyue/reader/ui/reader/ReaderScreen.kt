@@ -32,7 +32,10 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,16 +66,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanyue.reader.data.PageMode
+import com.yuanyue.reader.data.ReaderFont
 import com.yuanyue.reader.data.ReaderSettings
 import com.yuanyue.reader.data.ReaderTheme
+import com.yuanyue.reader.model.AnnotationDraft
+import com.yuanyue.reader.model.AnnotationType
+import com.yuanyue.reader.model.ReaderAnnotationEntity
 import com.yuanyue.reader.model.BookChapter
 import com.yuanyue.reader.ui.theme.LocalAppDarkMode
 import kotlin.math.roundToInt
@@ -86,6 +96,7 @@ fun ReaderScreen(
     val selectedChapter = viewModel.selectedChapter
     val loadError = viewModel.loadError
     val settings by viewModel.settings.collectAsState(initial = ReaderSettings())
+    val annotations by viewModel.annotations.collectAsState()
 
     when {
         book == null && loadError == null -> {
@@ -152,6 +163,13 @@ fun ReaderScreen(
                 onParagraphSpacingChange = viewModel::updateParagraphSpacing,
                 onContentPaddingChange = viewModel::updateContentPadding,
                 onIndentFirstLineChange = viewModel::updateIndentFirstLine,
+                onTtsVoiceChange = viewModel::updateTtsVoice,
+                onTtsRateChange = viewModel::updateTtsRate,
+                onTtsEngineChange = viewModel::updateTtsEngine,
+                onTtsCatalogChange = viewModel::updateTtsCatalog,
+                annotations = annotations,
+                onAddAnnotation = viewModel::addAnnotation,
+                onDeleteAnnotation = viewModel::deleteAnnotation,
             )
         }
     }
@@ -197,12 +215,23 @@ internal fun ReaderContent(
     onParagraphSpacingChange: (Float) -> Unit,
     onContentPaddingChange: (Float) -> Unit,
     onIndentFirstLineChange: (Boolean) -> Unit,
+    onTtsVoiceChange: (String?) -> Unit,
+    onTtsRateChange: (Float) -> Unit,
+    onTtsEngineChange: (String?) -> Unit,
+    onTtsCatalogChange: (String?) -> Unit,
+    annotations: List<com.yuanyue.reader.model.ReaderAnnotationEntity>,
+    onAddAnnotation: (com.yuanyue.reader.model.AnnotationDraft) -> Unit,
+    onDeleteAnnotation: (Long) -> Unit,
 ) {
     val palette = readerPalette(settings.theme, LocalAppDarkMode.current)
     val density = LocalDensity.current
     var controlsVisible by remember { mutableStateOf(true) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showTts by remember { mutableStateOf(false) }
+    var showAi by remember { mutableStateOf(false) }
+    var showAnnotations by remember { mutableStateOf(false) }
+    var annotationTarget by remember { mutableStateOf<AnnotationTarget?>(null) }
     var currentPage by remember(chapterIndex) { mutableIntStateOf(initialPage.coerceAtLeast(0)) }
     val freeScroll = settings.pageMode == PageMode.FREE_SCROLL &&
         chapters.size > 1 &&
@@ -222,13 +251,53 @@ internal fun ReaderContent(
         else -> chapterIndex
     }
     val displayChapterTitle = chapters.getOrNull(displayChapterIndex)?.title ?: chapter.title
+    val ttsText = when {
+        freeHorizontal || freeScroll -> chapters.getOrNull(displayChapterIndex)?.content ?: chapter.content
+        else -> chapter.content
+    }
+    val context = LocalContext.current
+    val ttsCatalog = remember(settings.ttsCatalogJson) {
+        TtsCatalog.parse(settings.ttsCatalogJson)
+    }
+    val ttsController = remember {
+        ReaderTtsController(
+            context = context,
+            initialVoiceName = settings.ttsVoiceName,
+            initialRate = settings.ttsRate,
+            initialEnginePackage = settings.ttsEnginePackage,
+            onVoiceChanged = onTtsVoiceChange,
+            onRateChanged = onTtsRateChange,
+            onEngineChanged = onTtsEngineChange,
+        )
+    }
+    DisposableEffect(ttsController) {
+        onDispose { ttsController.shutdown() }
+    }
+    LaunchedEffect(ttsText) {
+        ttsController.setText(ttsText)
+    }
 
     val textStyle = TextStyle(
         color = palette.text,
         fontSize = settings.fontSizeSp.sp,
         lineHeight = settings.fontSizeSp.sp * settings.lineHeight,
-        fontFamily = if (settings.serifFont) FontFamily.Serif else FontFamily.Default,
+        fontFamily = readerFontFamily(settings),
     )
+
+    fun annotationFor(chapter: Int, page: Int, paragraph: Int = -1): ReaderAnnotationEntity? =
+        annotations.lastOrNull {
+            it.chapterIndex == chapter &&
+                it.pageIndex == page &&
+                it.paragraphIndex == paragraph &&
+                it.type != AnnotationType.BOOKMARK.name
+        }
+
+    fun textStyleFor(annotation: ReaderAnnotationEntity?): TextStyle =
+        if (annotation?.type == AnnotationType.UNDERLINE.name) {
+            textStyle.copy(textDecoration = TextDecoration.Underline)
+        } else {
+            textStyle
+        }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -309,17 +378,40 @@ internal fun ReaderContent(
                         item.content.split('\n')
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
-                            .forEach { paragraph ->
+                            .forEachIndexed { paragraphIndex, paragraph ->
+                                val annotation = annotationFor(page, 0, paragraphIndex)
                                 BasicText(
                                     text = if (settings.indentFirstLine) {
                                         "\u3000\u3000$paragraph"
                                     } else {
                                         paragraph
                                     },
-                                    style = textStyle,
-                                    modifier = Modifier.padding(
-                                        bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
-                                    ),
+                                    style = textStyleFor(annotation),
+                                    modifier = Modifier
+                                        .background(
+                                            if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
+                                                annotation?.type == AnnotationType.NOTE.name
+                                            ) {
+                                                Color(annotation.color)
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                        )
+                                        .pointerInput(page, paragraphIndex) {
+                                            detectTapGestures(
+                                                onLongPress = {
+                                                    annotationTarget = AnnotationTarget(
+                                                        chapterIndex = page,
+                                                        pageIndex = 0,
+                                                        paragraphIndex = paragraphIndex,
+                                                        text = paragraph,
+                                                    )
+                                                },
+                                            )
+                                        }
+                                        .padding(
+                                            bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
+                                        ),
                                 )
                             }
                     }
@@ -354,7 +446,7 @@ internal fun ReaderContent(
                         bottom = bottomPadding,
                     ),
                 ) {
-                    itemsIndexed(chapters, key = { index, _ -> index }) { _, item ->
+                    itemsIndexed(chapters, key = { index, _ -> index }) { chapterIdx, item ->
                         Column(
                             modifier = Modifier.padding(bottom = 20.dp),
                         ) {
@@ -369,17 +461,40 @@ internal fun ReaderContent(
                             item.content.split('\n')
                                 .map { it.trim() }
                                 .filter { it.isNotEmpty() }
-                                .forEach { paragraph ->
+                                .forEachIndexed { paragraphIndex, paragraph ->
+                                    val annotation = annotationFor(chapterIdx, 0, paragraphIndex)
                                     BasicText(
                                         text = if (settings.indentFirstLine) {
                                             "\u3000\u3000$paragraph"
                                         } else {
                                             paragraph
                                         },
-                                        style = textStyle,
-                                        modifier = Modifier.padding(
-                                            bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
-                                        ),
+                                        style = textStyleFor(annotation),
+                                        modifier = Modifier
+                                            .background(
+                                                if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
+                                                    annotation?.type == AnnotationType.NOTE.name
+                                                ) {
+                                                    Color(annotation.color)
+                                                } else {
+                                                    Color.Transparent
+                                                },
+                                            )
+                                            .pointerInput(chapterIdx, paragraphIndex) {
+                                                detectTapGestures(
+                                                    onLongPress = {
+                                                        annotationTarget = AnnotationTarget(
+                                                            chapterIndex = chapterIdx,
+                                                            pageIndex = 0,
+                                                            paragraphIndex = paragraphIndex,
+                                                            text = paragraph,
+                                                        )
+                                                    },
+                                                )
+                                            }
+                                            .padding(
+                                                bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
+                                            ),
                                     )
                                 }
                         }
@@ -438,9 +553,31 @@ internal fun ReaderContent(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
+                    val annotation = annotationFor(chapterIndex, page)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .background(
+                                if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
+                                    annotation?.type == AnnotationType.NOTE.name
+                                ) {
+                                    Color(annotation.color)
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .pointerInput(chapterIndex, page) {
+                                detectTapGestures(
+                                    onLongPress = {
+                                        annotationTarget = AnnotationTarget(
+                                            chapterIndex = chapterIndex,
+                                            pageIndex = page,
+                                            paragraphIndex = -1,
+                                            text = pages[page].text,
+                                        )
+                                    },
+                                )
+                            }
                             .padding(
                                 start = horizontalPadding,
                                 top = topPadding,
@@ -450,7 +587,7 @@ internal fun ReaderContent(
                     ) {
                         BasicText(
                             text = pages[page],
-                            style = textStyle,
+                            style = textStyleFor(annotation),
                         )
                     }
                 }
@@ -476,11 +613,34 @@ internal fun ReaderContent(
                         bottom = bottomPadding,
                     ),
                 ) {
-                    itemsIndexed(pages) { _, page ->
+                    itemsIndexed(pages) { pageIndex, page ->
+                        val annotation = annotationFor(chapterIndex, pageIndex)
                         BasicText(
                             text = page,
-                            style = textStyle,
-                            modifier = Modifier.padding(bottom = 10.dp),
+                            style = textStyleFor(annotation),
+                            modifier = Modifier
+                                .background(
+                                    if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
+                                        annotation?.type == AnnotationType.NOTE.name
+                                    ) {
+                                        Color(annotation.color)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
+                                .pointerInput(chapterIndex, pageIndex) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            annotationTarget = AnnotationTarget(
+                                                chapterIndex = chapterIndex,
+                                                pageIndex = pageIndex,
+                                                paragraphIndex = -1,
+                                                text = page.text,
+                                            )
+                                        },
+                                    )
+                                }
+                                .padding(bottom = 10.dp),
                         )
                     }
                 }
@@ -499,6 +659,9 @@ internal fun ReaderContent(
                 contentColor = palette.text,
                 onBack = onBack,
                 onToc = { showToc = true },
+                onTts = { showTts = true },
+                onAi = { showAi = true },
+                onNotes = { showAnnotations = true },
                 onSettings = { showSettings = true },
             )
         }
@@ -509,21 +672,29 @@ internal fun ReaderContent(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            ReaderBottomBar(
-                chapterTitle = displayChapterTitle,
-                chapterIndex = displayChapterIndex,
-                chapterCount = chapterCount,
-                pageInfo = if (freeHorizontal || freeScroll) {
-                    null
-                } else {
-                    pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
-                        "${(currentPage + 1).coerceAtMost(pageList.size)} / ${pageList.size}"
-                    }
-                },
-                backgroundColor = palette.background,
-                contentColor = palette.text,
-                onSettings = { showSettings = true },
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (ttsController.isActive) {
+                    TtsMiniBar(controller = ttsController, modifier = Modifier.fillMaxWidth())
+                }
+                ReaderBottomBar(
+                    chapterTitle = displayChapterTitle,
+                    chapterIndex = displayChapterIndex,
+                    chapterCount = chapterCount,
+                    pageInfo = if (freeHorizontal || freeScroll) {
+                        null
+                    } else {
+                        pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
+                            "${(currentPage + 1).coerceAtMost(pageList.size)} / ${pageList.size}"
+                        }
+                    },
+                    backgroundColor = palette.background,
+                    contentColor = palette.text,
+                    onSettings = { showSettings = true },
+                )
+            }
         }
     }
 
@@ -594,6 +765,61 @@ internal fun ReaderContent(
             onIndentFirstLineChange = onIndentFirstLineChange,
         )
     }
+
+    if (showTts) {
+        TtsSheet(
+            controller = ttsController,
+            catalog = ttsCatalog,
+            onImportCatalog = onTtsCatalogChange,
+            onDismiss = { showTts = false },
+        )
+    }
+
+    if (showAi) {
+        ReaderAiSheet(
+            bookTitle = bookTitle,
+            chapterTitle = displayChapterTitle,
+            chapterText = ttsText,
+            onDismiss = { showAi = false },
+        )
+    }
+
+    if (showAnnotations) {
+        val annotationPage = if (freeHorizontal || freeScroll) 0 else currentPage
+        val bookmarkText = chapter.content.take(80)
+        AnnotationsSheet(
+            annotations = annotations,
+            onDismiss = { showAnnotations = false },
+            onJump = {
+                showAnnotations = false
+                onSelectChapter(it.chapterIndex)
+            },
+            onDelete = onDeleteAnnotation,
+            onAddBookmark = {
+                onAddAnnotation(
+                    AnnotationDraft(
+                        chapterIndex = displayChapterIndex,
+                        pageIndex = annotationPage,
+                        paragraphIndex = -1,
+                        text = bookmarkText.ifBlank { displayChapterTitle },
+                        type = AnnotationType.BOOKMARK,
+                    ),
+                )
+                showAnnotations = false
+            },
+        )
+    }
+
+    annotationTarget?.let { target ->
+        AnnotationActionDialog(
+            target = target,
+            onDismiss = { annotationTarget = null },
+            onSave = { draft ->
+                onAddAnnotation(draft)
+                annotationTarget = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -603,6 +829,9 @@ private fun ReaderTopBar(
     contentColor: Color,
     onBack: () -> Unit,
     onToc: () -> Unit,
+    onTts: () -> Unit,
+    onAi: () -> Unit,
+    onNotes: () -> Unit,
     onSettings: () -> Unit,
 ) {
     Surface(color = backgroundColor.copy(alpha = 0.94f)) {
@@ -625,6 +854,15 @@ private fun ReaderTopBar(
             )
             IconButton(onClick = onToc) {
                 Icon(Icons.Default.FormatListBulleted, contentDescription = "目录", tint = contentColor)
+            }
+            IconButton(onClick = onTts) {
+                Icon(Icons.Default.Headphones, contentDescription = "听书", tint = contentColor)
+            }
+            IconButton(onClick = onAi) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = "AI 伴读", tint = contentColor)
+            }
+            IconButton(onClick = onNotes) {
+                Icon(Icons.Default.Bookmarks, contentDescription = "笔记与书签", tint = contentColor)
             }
             IconButton(onClick = onSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "阅读设置", tint = contentColor)
@@ -841,6 +1079,14 @@ private fun readerPalette(theme: ReaderTheme, appDark: Boolean): ReaderPalette =
         text = Color(0xFFB8B8B8),
         secondary = Color(0xFF6D6D6D),
     )
+}
+
+private fun readerFontFamily(settings: ReaderSettings): FontFamily = when (settings.fontFamily) {
+    ReaderFont.SERIF -> FontFamily.Serif
+    ReaderFont.MONOSPACE -> FontFamily.Monospace
+    ReaderFont.CURSIVE -> FontFamily.Cursive
+    ReaderFont.SANS_SERIF -> FontFamily.SansSerif
+    ReaderFont.DEFAULT -> if (settings.serifFont) FontFamily.Serif else FontFamily.Default
 }
 
 private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {

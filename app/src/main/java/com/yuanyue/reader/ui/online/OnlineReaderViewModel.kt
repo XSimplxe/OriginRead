@@ -6,12 +6,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yuanyue.reader.data.AnnotationRepository
 import com.yuanyue.reader.data.OnlineBookRepository
 import com.yuanyue.reader.data.OperationResult
 import com.yuanyue.reader.data.PageMode
 import com.yuanyue.reader.data.ReaderSettings
 import com.yuanyue.reader.data.ReaderTheme
 import com.yuanyue.reader.data.SettingsRepository
+import com.yuanyue.reader.model.AnnotationDraft
 import com.yuanyue.reader.model.OnlineBookEntity
 import com.yuanyue.reader.model.OnlineChapterEntity
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,7 +25,13 @@ class OnlineReaderViewModel(
     private val chapterId: Long,
     private val repository: OnlineBookRepository,
     private val settingsRepository: SettingsRepository,
+    private val annotationRepository: AnnotationRepository,
 ) : ViewModel() {
+    val annotations = annotationRepository.observe("online:$bookId").stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     var book by mutableStateOf<OnlineBookEntity?>(null)
         private set
     var chapters by mutableStateOf<List<OnlineChapterEntity>>(emptyList())
@@ -154,5 +162,29 @@ class OnlineReaderViewModel(
 
     fun updateIndentFirstLine(value: Boolean) {
         viewModelScope.launch { settingsRepository.updateIndentFirstLine(value) }
+    }
+
+    fun updateTtsVoice(name: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsVoice(name) }
+    }
+
+    fun updateTtsRate(value: Float) {
+        viewModelScope.launch { settingsRepository.updateTtsRate(value) }
+    }
+
+    fun updateTtsEngine(packageName: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsEngine(packageName) }
+    }
+
+    fun updateTtsCatalog(json: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsCatalog(json) }
+    }
+
+    fun addAnnotation(draft: AnnotationDraft) {
+        viewModelScope.launch { annotationRepository.add("online:$bookId", draft) }
+    }
+
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch { annotationRepository.delete(id) }
     }
 }

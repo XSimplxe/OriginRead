@@ -12,6 +12,12 @@ interface OnlineBookDao {
     @Query("SELECT * FROM online_books WHERE sourceId = :sourceId ORDER BY cachedAt DESC")
     fun observeBySource(sourceId: Long): Flow<List<OnlineBookEntity>>
 
+    @Query("SELECT * FROM online_books WHERE isFavorite = 1 ORDER BY cachedAt DESC")
+    fun observeFavorites(): Flow<List<OnlineBookEntity>>
+
+    @Query("UPDATE online_books SET isFavorite = :favorite WHERE id = :bookId")
+    suspend fun updateFavorite(bookId: Long, favorite: Boolean)
+
     @Query("SELECT * FROM online_books WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): OnlineBookEntity?
 

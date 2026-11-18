@@ -23,8 +23,8 @@ android {
         applicationId = "com.yuanyue.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 200
-        versionName = "1.2.0"
+        versionCode = 300
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -86,6 +86,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {

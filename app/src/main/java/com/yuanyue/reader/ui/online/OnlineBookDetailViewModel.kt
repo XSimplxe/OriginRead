@@ -30,6 +30,15 @@ class OnlineBookDetailViewModel(
 
     fun retry() = load()
 
+    fun toggleFavorite() {
+        val current = book ?: return
+        viewModelScope.launch {
+            val next = !current.isFavorite
+            repository.toggleFavorite(current.id, next)
+            book = current.copy(isFavorite = next)
+        }
+    }
+
     private fun load() {
         isLoading = true
         error = null

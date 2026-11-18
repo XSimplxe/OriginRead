@@ -16,6 +16,7 @@ import com.yuanyue.reader.model.ComicSourceEntity
 import com.yuanyue.reader.model.OnlineBookEntity
 import com.yuanyue.reader.model.OnlineChapterEntity
 import com.yuanyue.reader.model.OnlineComicEntity
+import com.yuanyue.reader.model.ReaderAnnotationEntity
 import com.yuanyue.reader.model.RssArticleEntity
 import com.yuanyue.reader.model.RssFeedEntity
 
@@ -31,8 +32,9 @@ import com.yuanyue.reader.model.RssFeedEntity
         ComicSourceEntity::class,
         OnlineComicEntity::class,
         ComicChapterEntity::class,
+        ReaderAnnotationEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -47,6 +49,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun comicSourceDao(): ComicSourceDao
     abstract fun onlineComicDao(): OnlineComicDao
     abstract fun comicChapterDao(): ComicChapterDao
+    abstract fun readerAnnotationDao(): ReaderAnnotationDao
 
     companion object {
         @Volatile
@@ -62,6 +65,36 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS reader_annotations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        bookKey TEXT NOT NULL,
+                        chapterIndex INTEGER NOT NULL,
+                        pageIndex INTEGER NOT NULL,
+                        paragraphIndex INTEGER NOT NULL DEFAULT -1,
+                        text TEXT NOT NULL,
+                        note TEXT,
+                        type TEXT NOT NULL,
+                        color INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_reader_annotations_bookKey_chapterIndex_pageIndex " +
+                        "ON reader_annotations(bookKey, chapterIndex, pageIndex)",
+                )
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE online_books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -69,7 +102,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yuanyue_reader.db",
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

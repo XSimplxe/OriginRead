@@ -37,6 +37,7 @@ fun OnlineReaderScreen(
     val currentIndex = viewModel.currentIndex
     val currentChapter = chapters.getOrNull(currentIndex)
     val settings by viewModel.settings.collectAsState(initial = ReaderSettings())
+    val annotations by viewModel.annotations.collectAsState()
     val isLoading = viewModel.isLoading
     val error = viewModel.error
 
@@ -69,6 +70,13 @@ fun OnlineReaderScreen(
             onParagraphSpacingChange = viewModel::updateParagraphSpacing,
             onContentPaddingChange = viewModel::updateContentPadding,
             onIndentFirstLineChange = viewModel::updateIndentFirstLine,
+            onTtsVoiceChange = viewModel::updateTtsVoice,
+            onTtsRateChange = viewModel::updateTtsRate,
+            onTtsEngineChange = viewModel::updateTtsEngine,
+            onTtsCatalogChange = viewModel::updateTtsCatalog,
+            annotations = annotations,
+            onAddAnnotation = viewModel::addAnnotation,
+            onDeleteAnnotation = viewModel::deleteAnnotation,
         )
         return
     }

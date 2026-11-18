@@ -52,9 +52,14 @@ class OnlineBookRepository(
     private val client: OkHttpClient,
 ) {
     val sources: Flow<List<BookSourceEntity>> = sourceDao.observeAll()
+    val favoriteBooks: Flow<List<OnlineBookEntity>> = bookDao.observeFavorites()
 
     fun books(sourceId: Long): Flow<List<OnlineBookEntity>> =
         bookDao.observeBySource(sourceId)
+
+    suspend fun toggleFavorite(bookId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
+        bookDao.updateFavorite(bookId, favorite)
+    }
 
     /**
      * 添加书源：先解析，再实际跑一次搜索/目录/正文检测，通过后才入库。

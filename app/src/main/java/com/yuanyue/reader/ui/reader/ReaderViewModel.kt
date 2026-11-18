@@ -6,11 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yuanyue.reader.data.AnnotationRepository
 import com.yuanyue.reader.data.LibraryRepository
 import com.yuanyue.reader.data.PageMode
 import com.yuanyue.reader.data.ReaderSettings
 import com.yuanyue.reader.data.ReaderTheme
 import com.yuanyue.reader.data.SettingsRepository
+import com.yuanyue.reader.model.AnnotationDraft
 import com.yuanyue.reader.model.BookChapter
 import com.yuanyue.reader.model.BookEntity
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,7 +23,13 @@ class ReaderViewModel(
     private val bookId: Long,
     private val libraryRepository: LibraryRepository,
     private val settingsRepository: SettingsRepository,
+    private val annotationRepository: AnnotationRepository,
 ) : ViewModel() {
+    val annotations = annotationRepository.observe("local:$bookId").stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     var book by mutableStateOf<BookEntity?>(null)
         private set
     var chapters by mutableStateOf<List<BookChapter>>(emptyList())
@@ -143,5 +151,29 @@ class ReaderViewModel(
 
     fun updateIndentFirstLine(value: Boolean) {
         viewModelScope.launch { settingsRepository.updateIndentFirstLine(value) }
+    }
+
+    fun updateTtsVoice(name: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsVoice(name) }
+    }
+
+    fun updateTtsRate(value: Float) {
+        viewModelScope.launch { settingsRepository.updateTtsRate(value) }
+    }
+
+    fun updateTtsEngine(packageName: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsEngine(packageName) }
+    }
+
+    fun updateTtsCatalog(json: String?) {
+        viewModelScope.launch { settingsRepository.updateTtsCatalog(json) }
+    }
+
+    fun addAnnotation(draft: AnnotationDraft) {
+        viewModelScope.launch { annotationRepository.add("local:$bookId", draft) }
+    }
+
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch { annotationRepository.delete(id) }
     }
 }

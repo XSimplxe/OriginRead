@@ -60,6 +60,11 @@ import com.yuanyue.reader.ui.comic.LocalComicReaderViewModel
 import com.yuanyue.reader.ui.settings.SettingsScreen
 import com.yuanyue.reader.ui.settings.SettingsViewModel
 import com.yuanyue.reader.ui.settings.ThemeSettingsScreen
+import com.yuanyue.reader.ui.settings.ReadingSettingsScreen
+import com.yuanyue.reader.ui.settings.AiSettingsScreen
+import com.yuanyue.reader.ui.settings.AboutScreen
+import com.yuanyue.reader.ui.settings.PersonalizationScreen
+import com.yuanyue.reader.ui.settings.TtsSettingsScreen
 
 @Composable
 fun AppNavHost(container: AppContainer) {
@@ -112,7 +117,11 @@ fun AppNavHost(container: AppContainer) {
             composable(Routes.HOME) {
                 val viewModel: HomeViewModel = viewModel(
                     factory = viewModelFactory {
-                        HomeViewModel(rssRepository = container.rssRepository)
+                        HomeViewModel(
+                            rssRepository = container.rssRepository,
+                            settingsRepository = container.settingsRepository,
+                            aiRepository = container.aiRepository,
+                        )
                     },
                 )
                 HomeScreen(
@@ -189,8 +198,65 @@ fun AppNavHost(container: AppContainer) {
                 )
                 SettingsScreen(
                     viewModel = viewModel,
-                    onOpenTheme = { navController.navigate(Routes.THEME_SETTINGS) },
+                    onOpenReading = { navController.navigate(Routes.READING_SETTINGS) },
+                    onOpenPersonalization = { navController.navigate(Routes.PERSONALIZATION) },
+                    onOpenTts = { navController.navigate(Routes.TTS_SETTINGS) },
+                    onOpenAi = { navController.navigate(Routes.AI_SETTINGS) },
+                    onOpenAbout = { navController.navigate(Routes.ABOUT) },
                 )
+            }
+
+            composable(Routes.PERSONALIZATION) {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        SettingsViewModel(container.settingsRepository)
+                    },
+                )
+                PersonalizationScreen(
+                    viewModel = viewModel,
+                    onOpenTheme = { navController.navigate(Routes.THEME_SETTINGS) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.TTS_SETTINGS) {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        SettingsViewModel(container.settingsRepository)
+                    },
+                )
+                TtsSettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.READING_SETTINGS) {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        SettingsViewModel(container.settingsRepository)
+                    },
+                )
+                ReadingSettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.AI_SETTINGS) {
+                val viewModel: SettingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        SettingsViewModel(container.settingsRepository)
+                    },
+                )
+                AiSettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.ABOUT) {
+                AboutScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.THEME_SETTINGS) {
@@ -314,6 +380,7 @@ fun AppNavHost(container: AppContainer) {
                             chapterId = chapterId,
                             repository = container.onlineBookRepository,
                             settingsRepository = container.settingsRepository,
+                            annotationRepository = container.annotationRepository,
                         )
                     },
                 )
@@ -441,6 +508,7 @@ fun AppNavHost(container: AppContainer) {
                             bookId = bookId,
                             libraryRepository = container.libraryRepository,
                             settingsRepository = container.settingsRepository,
+                            annotationRepository = container.annotationRepository,
                         )
                     },
                 )

@@ -22,6 +22,12 @@ class OnlineLibraryViewModel(
         initialValue = emptyList(),
     )
 
+    val favoriteBooks = repository.favoriteBooks.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
     var selectedSourceId by mutableStateOf<Long?>(null)
         private set
     var books by mutableStateOf<List<OnlineBookEntity>>(emptyList())

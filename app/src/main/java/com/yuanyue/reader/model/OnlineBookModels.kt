@@ -41,6 +41,7 @@ data class OnlineBookEntity(
     val intro: String? = null,
     val latestChapter: String? = null,
     val cachedAt: Long = System.currentTimeMillis(),
+    val isFavorite: Boolean = false,
 )
 
 @Entity(

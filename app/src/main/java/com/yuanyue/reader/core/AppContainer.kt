@@ -3,6 +3,8 @@ package com.yuanyue.reader.core
 import android.content.Context
 import com.yuanyue.reader.core.db.AppDatabase
 import com.yuanyue.reader.data.ArticleContentRepository
+import com.yuanyue.reader.data.AiRepository
+import com.yuanyue.reader.data.AnnotationRepository
 import com.yuanyue.reader.data.BookSourceRuleEngine
 import com.yuanyue.reader.data.ComicRepository
 import com.yuanyue.reader.data.ComicSourceRuleEngine
@@ -12,6 +14,7 @@ import com.yuanyue.reader.data.RssClient
 import com.yuanyue.reader.data.RssRepository
 import com.yuanyue.reader.data.OnlineBookRepository
 import com.yuanyue.reader.data.SettingsRepository
+import com.yuanyue.reader.data.UpdateChecker
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -19,6 +22,8 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext)
     val rssClient = RssClient()
+    val aiRepository = AiRepository(rssClient.client, settingsRepository)
+    val updateChecker = UpdateChecker(rssClient.client)
     val rssRepository = RssRepository(
         feedDao = database.rssFeedDao(),
         articleDao = database.rssArticleDao(),
@@ -40,6 +45,7 @@ class AppContainer(context: Context) {
         context = appContext,
         bookDao = database.bookDao(),
     )
+    val annotationRepository = AnnotationRepository(database.readerAnnotationDao())
     val comicRepository = ComicRepository(
         sourceDao = database.comicSourceDao(),
         comicDao = database.onlineComicDao(),
