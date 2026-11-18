@@ -1,0 +1,20 @@
+{
+  "engines": [
+    {
+      "package": "com.google.android.tts",
+      "name": "Google 语音服务",
+      "voices": [
+        {
+          "name": "cmn-cn-x-ccc-local",
+          "label": "中文女声 · 离线",
+          "locale": "zh-CN"
+        },
+        {
+          "name": "cmn-cn-x-ccd-local",
+          "label": "中文男声 · 离线",
+          "locale": "zh-CN"
+        }
+      ]
+    }
+  ]
+}
