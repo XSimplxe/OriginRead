@@ -92,10 +92,10 @@
 
 ## 安装
 
-从 [Releases](https://github.com/XSimplxe/OriginRead/releases) 下载 APK。
+从 [Releases](https://github.com/XSimplxe/OriginRead/releases) 下载 APK。每次发版同时提供通用包和 32 位 `armeabi-v7a` 包。
 
 - 最低 Android 8.0（API 26），目标 Android 15（API 35）
-- 正式包约 8 MB（R8 压缩）；仅 32 位设备选择 `armeabi-v7a`
+- 正式包约 8 MB（R8 压缩）；仅 32 位设备选择 `YuanyueReader-<版本>-armeabi-v7a.apk`
 - 升级安装请保留同一签名；正式包使用 v2 + v3 签名
 
 ## 从源码构建
