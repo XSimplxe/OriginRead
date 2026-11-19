@@ -6,17 +6,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yuanyue.reader.data.AnnotationRepository
 import com.yuanyue.reader.data.ComicRepository
 import com.yuanyue.reader.data.OperationResult
+import com.yuanyue.reader.model.AnnotationDraft
 import com.yuanyue.reader.model.ComicChapterEntity
 import com.yuanyue.reader.model.ComicImageItem
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ComicReaderViewModel(
     private val comicId: Long,
     private val chapterId: Long,
     private val repository: ComicRepository,
+    private val annotationRepository: AnnotationRepository,
 ) : ViewModel() {
+    val annotations = annotationRepository.observe("comic:$comicId:$chapterId").stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     var chapters by mutableStateOf<List<ComicChapterEntity>>(emptyList())
         private set
     var currentIndex by mutableIntStateOf(0)
@@ -37,6 +47,14 @@ class ComicReaderViewModel(
     }
 
     fun retry() = load()
+
+    fun addAnnotation(draft: AnnotationDraft) {
+        viewModelScope.launch { annotationRepository.add("comic:$comicId:$chapterId", draft) }
+    }
+
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch { annotationRepository.delete(id) }
+    }
 
     private fun load() {
         isLoading = true

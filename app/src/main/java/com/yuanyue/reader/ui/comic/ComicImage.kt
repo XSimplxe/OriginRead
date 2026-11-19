@@ -3,6 +3,8 @@ package com.yuanyue.reader.ui.comic
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -120,41 +122,17 @@ fun ZoomableComicImageView(
     referer: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    var scale by remember(model) { mutableFloatStateOf(1f) }
-    var offset by remember(model) { mutableStateOf(Offset.Zero) }
-    Box(
+    androidx.compose.foundation.layout.Column(
         modifier = modifier
+            .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(model) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        scale = if (scale > 1f) 1f else 2.5f
-                        offset = Offset.Zero
-                    },
-                )
-            }
-            .pointerInput(model, scale) {
-                if (scale > 1f) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val next = (scale * zoom).coerceIn(1f, 5f)
-                        scale = next
-                        offset = if (next > 1f) offset + pan else Offset.Zero
-                    }
-                }
-            },
+            .verticalScroll(rememberScrollState()),
     ) {
         ComicImageView(
             model = model,
             referer = referer,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offset.x,
-                    translationY = offset.y,
-                ),
-            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.FillWidth,
         )
     }
 }

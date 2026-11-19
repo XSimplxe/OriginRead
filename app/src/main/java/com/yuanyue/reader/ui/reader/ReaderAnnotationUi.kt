@@ -42,8 +42,10 @@ data class AnnotationTarget(
 @Composable
 fun AnnotationActionDialog(
     target: AnnotationTarget,
+    existing: ReaderAnnotationEntity?,
     onDismiss: () -> Unit,
     onSave: (AnnotationDraft) -> Unit,
+    onDelete: (Long) -> Unit,
 ) {
     var noteMode by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf("") }
@@ -136,7 +138,19 @@ fun AnnotationActionDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (existing != null) {
+                    TextButton(
+                        onClick = {
+                            onDelete(existing.id)
+                            onDismiss()
+                        },
+                    ) {
+                        Text("取消标记", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("取消") }
+            }
         },
     )
 }

@@ -23,8 +23,8 @@ android {
         applicationId = "com.yuanyue.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 300
-        versionName = "1.3.0"
+        versionCode = 301
+        versionName = "1.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

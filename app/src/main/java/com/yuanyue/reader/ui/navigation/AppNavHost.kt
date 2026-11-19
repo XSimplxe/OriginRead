@@ -427,6 +427,7 @@ fun AppNavHost(container: AppContainer) {
                             comicId = comicId,
                             chapterId = chapterId,
                             repository = container.comicRepository,
+                            annotationRepository = container.annotationRepository,
                         )
                     },
                 )
@@ -488,6 +489,7 @@ fun AppNavHost(container: AppContainer) {
                         LocalComicReaderViewModel(
                             bookId = bookId,
                             repository = container.libraryRepository,
+                            annotationRepository = container.annotationRepository,
                         )
                     },
                 )

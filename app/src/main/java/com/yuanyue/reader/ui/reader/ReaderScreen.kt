@@ -245,6 +245,7 @@ internal fun ReaderContent(
     var freeHorizontalChapter by remember(chapterIndex) {
         mutableIntStateOf(chapterIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)))
     }
+    var freeHorizontalPage by remember { mutableIntStateOf(0) }
     val displayChapterIndex = when {
         freeHorizontal -> freeHorizontalChapter
         freeScroll -> freeChapterIndex
@@ -323,6 +324,14 @@ internal fun ReaderContent(
             if (settings.indentFirstLine) indentParagraphs(chapter.content) else chapter.content
         }
         val pages = rememberPagedText(displayedContent, textStyle, pageWidth, pageHeight)
+        val freeBookPages = rememberPagedBook(
+            chapters = chapters,
+            style = textStyle,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight,
+            enabled = freeHorizontal,
+            indentFirstLine = settings.indentFirstLine,
+        )
 
         // 定时保存一次进度，同时让阅读摘要里的累计阅读时长能够增长。
         LaunchedEffect(chapterIndex, settings.pageMode, pages?.size) {
@@ -333,33 +342,104 @@ internal fun ReaderContent(
                     freeScroll -> freeChapterIndex
                     else -> chapterIndex
                 }
-                val page = if (freeHorizontal || freeScroll) 0 else currentPage
-                val total = if (freeHorizontal || freeScroll) chapters.size else (pages?.size ?: 0)
+                val page = if (freeScroll) 0 else currentPage
+                val total = if (freeScroll) chapters.size else (pages?.size ?: 0)
                 onProgress(index, page, total)
             }
         }
 
         if (freeHorizontal) {
-            key(chapterIndex) {
+            if (freeBookPages == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = palette.text,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = "正在排版整本书…",
+                            modifier = Modifier.padding(top = 12.dp),
+                            color = palette.secondary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            } else if (freeBookPages.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = horizontalPadding,
+                            top = topPadding,
+                            end = horizontalPadding,
+                            bottom = bottomPadding,
+                        ),
+                ) {
+                    Text("这本书暂无内容", color = palette.secondary)
+                }
+            } else {
+                val startPage = remember(freeBookPages, chapterIndex, initialPage) {
+                    freeBookPages.indexOfFirst {
+                        it.chapterIndex == chapterIndex && it.pageIndex == initialPage.coerceAtLeast(0)
+                    }.takeIf { it >= 0 }
+                        ?: freeBookPages.indexOfFirst { it.chapterIndex == chapterIndex }
+                            .coerceAtLeast(0)
+                }
                 val pagerState = rememberPagerState(
-                    initialPage = chapterIndex.coerceIn(0, chapters.lastIndex),
-                    pageCount = { chapters.size },
+                    initialPage = startPage,
+                    pageCount = { freeBookPages.size },
                 )
-                LaunchedEffect(pagerState) {
-                    snapshotFlow { pagerState.currentPage }.collect { page ->
-                        freeHorizontalChapter = page.coerceIn(0, chapters.lastIndex)
-                        onProgress(freeHorizontalChapter, 0, chapters.size)
+                LaunchedEffect(chapterIndex, freeBookPages) {
+                    val target = freeBookPages.indexOfFirst {
+                        it.chapterIndex == chapterIndex && it.pageIndex == initialPage.coerceAtLeast(0)
+                    }.takeIf { it >= 0 }
+                        ?: freeBookPages.indexOfFirst { it.chapterIndex == chapterIndex }
+                            .coerceAtLeast(0)
+                    pagerState.scrollToPage(target.coerceIn(0, freeBookPages.lastIndex))
+                }
+                LaunchedEffect(pagerState, freeBookPages) {
+                    snapshotFlow { pagerState.currentPage }.collect { pageIndex ->
+                        val bookPage = freeBookPages.getOrNull(pageIndex) ?: return@collect
+                        freeHorizontalChapter = bookPage.chapterIndex
+                        freeHorizontalPage = pageIndex
+                        currentPage = bookPage.pageIndex
+                        onProgress(bookPage.chapterIndex, bookPage.pageIndex, bookPage.pageCount)
                     }
                 }
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
-                ) { page ->
-                    val item = chapters[page]
-                    Column(
+                ) { pageIndex ->
+                    val bookPage = freeBookPages[pageIndex]
+                    val annotation = annotationFor(bookPage.chapterIndex, bookPage.pageIndex)
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                            .background(
+                                if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
+                                    annotation?.type == AnnotationType.NOTE.name
+                                ) {
+                                    Color(annotation.color)
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .pointerInput(bookPage.chapterIndex, bookPage.pageIndex) {
+                                detectTapGestures(
+                                    onLongPress = {
+                                        annotationTarget = AnnotationTarget(
+                                            chapterIndex = bookPage.chapterIndex,
+                                            pageIndex = bookPage.pageIndex,
+                                            paragraphIndex = -1,
+                                            text = bookPage.text.text,
+                                        )
+                                    },
+                                )
+                            }
                             .padding(
                                 start = horizontalPadding,
                                 top = topPadding,
@@ -367,53 +447,10 @@ internal fun ReaderContent(
                                 bottom = bottomPadding,
                             ),
                     ) {
-                        Text(
-                            text = item.title,
-                            style = textStyle.copy(
-                                fontSize = (settings.fontSizeSp + 5).sp,
-                                fontWeight = FontWeight.Bold,
-                            ),
-                            modifier = Modifier.padding(bottom = 14.dp),
+                        BasicText(
+                            text = bookPage.text,
+                            style = textStyleFor(annotation),
                         )
-                        item.content.split('\n')
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .forEachIndexed { paragraphIndex, paragraph ->
-                                val annotation = annotationFor(page, 0, paragraphIndex)
-                                BasicText(
-                                    text = if (settings.indentFirstLine) {
-                                        "\u3000\u3000$paragraph"
-                                    } else {
-                                        paragraph
-                                    },
-                                    style = textStyleFor(annotation),
-                                    modifier = Modifier
-                                        .background(
-                                            if (annotation?.type == AnnotationType.HIGHLIGHT.name ||
-                                                annotation?.type == AnnotationType.NOTE.name
-                                            ) {
-                                                Color(annotation.color)
-                                            } else {
-                                                Color.Transparent
-                                            },
-                                        )
-                                        .pointerInput(page, paragraphIndex) {
-                                            detectTapGestures(
-                                                onLongPress = {
-                                                    annotationTarget = AnnotationTarget(
-                                                        chapterIndex = page,
-                                                        pageIndex = 0,
-                                                        paragraphIndex = paragraphIndex,
-                                                        text = paragraph,
-                                                    )
-                                                },
-                                            )
-                                        }
-                                        .padding(
-                                            bottom = settings.paragraphSpacing.coerceIn(0f, 24f).dp,
-                                        ),
-                                )
-                            }
                     }
                 }
             }
@@ -538,21 +575,38 @@ internal fun ReaderContent(
             settings.pageMode == PageMode.FREE_HORIZONTAL
         ) {
             key(chapterIndex) {
+                val hasNextChapter = chapterIndex < chapterCount - 1
                 val startPage = initialPage.coerceIn(0, pages.lastIndex)
                 val pagerState = rememberPagerState(
                     initialPage = startPage,
-                    pageCount = { pages.size },
+                    pageCount = { pages.size + if (hasNextChapter) 1 else 0 },
                 )
                 LaunchedEffect(pagerState, pages.size) {
                     snapshotFlow { pagerState.currentPage }.collect { page ->
-                        currentPage = page
-                        onProgress(chapterIndex, page, pages.size)
+                        if (page < pages.size) {
+                            currentPage = page
+                            onProgress(chapterIndex, page, pages.size)
+                        } else if (hasNextChapter) {
+                            onSelectChapter(chapterIndex + 1)
+                        }
                     }
                 }
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
+                    if (page >= pages.size) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "正在进入下一章…",
+                                color = palette.secondary,
+                            )
+                        }
+                        return@HorizontalPager
+                    }
                     val annotation = annotationFor(chapterIndex, page)
                     Box(
                         modifier = Modifier
@@ -683,10 +737,10 @@ internal fun ReaderContent(
                     chapterTitle = displayChapterTitle,
                     chapterIndex = displayChapterIndex,
                     chapterCount = chapterCount,
-                    pageInfo = if (freeHorizontal || freeScroll) {
-                        null
-                    } else {
-                        pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
+                    pageInfo = when {
+                        freeScroll -> null
+                        freeHorizontal -> "${freeHorizontalPage + 1} / ${freeBookPages?.size ?: 0}"
+                        else -> pages?.takeIf { it.isNotEmpty() }?.let { pageList ->
                             "${(currentPage + 1).coerceAtMost(pageList.size)} / ${pageList.size}"
                         }
                     },
@@ -785,7 +839,7 @@ internal fun ReaderContent(
     }
 
     if (showAnnotations) {
-        val annotationPage = if (freeHorizontal || freeScroll) 0 else currentPage
+        val annotationPage = if (freeScroll) 0 else currentPage
         val bookmarkText = chapter.content.take(80)
         AnnotationsSheet(
             annotations = annotations,
@@ -813,11 +867,13 @@ internal fun ReaderContent(
     annotationTarget?.let { target ->
         AnnotationActionDialog(
             target = target,
+            existing = annotationFor(target.chapterIndex, target.pageIndex, target.paragraphIndex),
             onDismiss = { annotationTarget = null },
             onSave = { draft ->
                 onAddAnnotation(draft)
                 annotationTarget = null
             },
+            onDelete = onDeleteAnnotation,
         )
     }
 }

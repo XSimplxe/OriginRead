@@ -5,15 +5,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yuanyue.reader.data.AnnotationRepository
 import com.yuanyue.reader.data.LibraryRepository
 import com.yuanyue.reader.data.parser.ComicPage
+import com.yuanyue.reader.model.AnnotationDraft
 import com.yuanyue.reader.model.BookEntity
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class LocalComicReaderViewModel(
     private val bookId: Long,
     private val repository: LibraryRepository,
+    private val annotationRepository: AnnotationRepository,
 ) : ViewModel() {
+    val annotations = annotationRepository.observe("localcomic:$bookId").stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     var book by mutableStateOf<BookEntity?>(null)
         private set
     var pages by mutableStateOf<List<ComicPage>>(emptyList())
@@ -50,5 +60,13 @@ class LocalComicReaderViewModel(
                 isLoading = false
             }
         }
+    }
+
+    fun addAnnotation(draft: AnnotationDraft) {
+        viewModelScope.launch { annotationRepository.add("localcomic:$bookId", draft) }
+    }
+
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch { annotationRepository.delete(id) }
     }
 }

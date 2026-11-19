@@ -17,16 +17,21 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +46,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yuanyue.reader.model.AnnotationDraft
+import com.yuanyue.reader.model.AnnotationType
 import com.yuanyue.reader.model.ComicImageItem
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -54,7 +61,10 @@ fun ComicReaderScreen(
     val currentIndex = viewModel.currentIndex
     val currentChapter = chapters.getOrNull(currentIndex)
     val images = viewModel.images
+    val annotations = viewModel.annotations.collectAsState().value
     var vertical by remember { mutableStateOf(true) }
+    var drawMode by remember { mutableStateOf(false) }
+    var showNotes by remember { mutableStateOf(false) }
     var currentPage by remember(currentChapter?.id, vertical) { mutableIntStateOf(0) }
 
     Scaffold(
@@ -73,6 +83,16 @@ fun ComicReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { drawMode = !drawMode }) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = if (drawMode) "退出涂鸦" else "自由涂鸦",
+                            tint = if (drawMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    IconButton(onClick = { showNotes = true }) {
+                        Icon(Icons.Default.Bookmarks, contentDescription = "笔记与标注")
+                    }
                     TextButton(onClick = { vertical = !vertical }) {
                         Text(if (vertical) "上下" else "左右")
                     }
@@ -152,6 +172,20 @@ fun ComicReaderScreen(
             vertical -> {
                 ComicVerticalList(
                     images = images,
+                    annotations = annotations,
+                    drawMode = drawMode,
+                    onSaveStroke = { page, points ->
+                        viewModel.addAnnotation(
+                            AnnotationDraft(
+                                chapterIndex = 0,
+                                pageIndex = page,
+                                text = "漫画第 ${page + 1} 页涂鸦",
+                                type = AnnotationType.DRAW,
+                                note = points,
+                                color = 0xFF000000,
+                            ),
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
@@ -163,6 +197,20 @@ fun ComicReaderScreen(
             else -> {
                 ComicHorizontalPager(
                     images = images,
+                    annotations = annotations,
+                    drawMode = drawMode,
+                    onSaveStroke = { page, points ->
+                        viewModel.addAnnotation(
+                            AnnotationDraft(
+                                chapterIndex = 0,
+                                pageIndex = page,
+                                text = "漫画第 ${page + 1} 页涂鸦",
+                                type = AnnotationType.DRAW,
+                                note = points,
+                                color = 0xFF000000,
+                            ),
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
@@ -172,11 +220,35 @@ fun ComicReaderScreen(
             }
         }
     }
+
+    if (showNotes) {
+        ComicNoteDialog(
+            pageIndex = currentPage,
+            existing = annotations,
+            onDismiss = { showNotes = false },
+            onSave = { draft ->
+                viewModel.addAnnotation(
+                    AnnotationDraft(
+                        chapterIndex = 0,
+                        pageIndex = draft.pageIndex,
+                        text = "漫画第 ${draft.pageIndex + 1} 页",
+                        type = draft.type,
+                        note = draft.note,
+                        color = draft.color,
+                    ),
+                )
+            },
+            onDelete = viewModel::deleteAnnotation,
+        )
+    }
 }
 
 @Composable
 private fun ComicVerticalList(
     images: List<ComicImageItem>,
+    annotations: List<com.yuanyue.reader.model.ReaderAnnotationEntity>,
+    drawMode: Boolean,
+    onSaveStroke: (Int, String) -> Unit,
     modifier: Modifier,
     currentPage: Int,
     onPageChange: (Int) -> Unit,
@@ -193,13 +265,33 @@ private fun ComicVerticalList(
         contentPadding = PaddingValues(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        itemsIndexed(images, key = { index, image -> "${image.url}#$index" }) { _, image ->
-            ComicImageView(
-                model = image.url,
-                referer = image.referer,
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            )
+        itemsIndexed(images, key = { index, image -> "${image.url}#$index" }) { index, image ->
+            val pageAnnotations = annotations.filter { it.pageIndex == index }
+            val highlight = pageAnnotations.firstOrNull {
+                it.type == AnnotationType.HIGHLIGHT.name || it.type == AnnotationType.NOTE.name
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (highlight != null) androidx.compose.ui.graphics.Color(highlight.color)
+                        else androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+            ) {
+                ComicImageView(
+                    model = image.url,
+                    referer = image.referer,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
+                )
+                ComicDrawingOverlay(
+                    annotations = annotations,
+                    pageIndex = index,
+                    drawMode = drawMode,
+                    onSaveStroke = { onSaveStroke(index, it) },
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         }
     }
 }
@@ -208,6 +300,9 @@ private fun ComicVerticalList(
 @Composable
 private fun ComicHorizontalPager(
     images: List<ComicImageItem>,
+    annotations: List<com.yuanyue.reader.model.ReaderAnnotationEntity>,
+    drawMode: Boolean,
+    onSaveStroke: (Int, String) -> Unit,
     modifier: Modifier,
     currentPage: Int,
     onPageChange: (Int) -> Unit,
@@ -220,10 +315,30 @@ private fun ComicHorizontalPager(
     }
     HorizontalPager(state = pagerState, modifier = modifier) { page ->
         val image = images[page]
-        ZoomableComicImageView(
-            model = image.url,
-            referer = image.referer,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val pageAnnotations = annotations.filter { it.pageIndex == page }
+        val highlight = pageAnnotations.firstOrNull {
+            it.type == AnnotationType.HIGHLIGHT.name || it.type == AnnotationType.NOTE.name
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    if (highlight != null) androidx.compose.ui.graphics.Color(highlight.color)
+                    else androidx.compose.ui.graphics.Color.Transparent,
+                ),
+        ) {
+            ZoomableComicImageView(
+                model = image.url,
+                referer = image.referer,
+                modifier = Modifier.fillMaxSize(),
+            )
+            ComicDrawingOverlay(
+                annotations = annotations,
+                pageIndex = page,
+                drawMode = drawMode,
+                onSaveStroke = { onSaveStroke(page, it) },
+                modifier = Modifier.matchParentSize(),
+            )
+        }
     }
 }

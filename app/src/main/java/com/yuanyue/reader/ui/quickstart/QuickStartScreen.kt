@@ -92,15 +92,43 @@ fun QuickStartScreen(
     var rssLoading by remember { mutableStateOf(false) }
     var sourceLoading by remember { mutableStateOf(false) }
 
+    fun saveAndClose(callback: () -> Unit) {
+        scope.launch {
+            appContainer.settingsRepository.updateNickname(nickname)
+            appContainer.settingsRepository.updateAiSettings(
+                apiKey = apiKey,
+                baseUrl = baseUrl,
+                model = model,
+            )
+            appContainer.settingsRepository.updateUseCustomColors(true)
+            appContainer.settingsRepository.updatePaletteColor(
+                dark = false,
+                role = PaletteRole.PRIMARY,
+                color = selectedColor,
+            )
+            appContainer.settingsRepository.updatePaletteColor(
+                dark = true,
+                role = PaletteRole.PRIMARY,
+                color = selectedColor,
+            )
+            appContainer.settingsRepository.updatePaletteColor(
+                dark = false,
+                role = PaletteRole.SECONDARY,
+                color = selectedColor,
+            )
+            appContainer.settingsRepository.updatePaletteColor(
+                dark = true,
+                role = PaletteRole.SECONDARY,
+                color = selectedColor,
+            )
+            callback()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("快速开始") },
-                actions = {
-                    TextButton(onClick = onSkip) {
-                        Text("跳过")
-                    }
-                },
+                title = { Text("第一次使用") },
             )
         },
     ) { padding ->
@@ -113,13 +141,41 @@ fun QuickStartScreen(
         ) {
             item {
                 Text(
-                    text = "把原阅调成你的样子",
+                    text = "欢迎使用原阅",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "这些设置都可以稍后在「设置」里修改。",
+                    text = "花一分钟把阅读环境准备好。没有填写的项目都可以稍后在「设置」里补充。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
+            item {
+                Text(
+                    text = "1. 先添加书源",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "在书架「在线」中搜索和阅读网络小说、漫画。支持 Legado 书源链接、JSON 或 JSONL。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
+            item {
+                Text(
+                    text = "2. 再订阅 RSS",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "RSS 会聚合到首页的每日摘要和资讯流。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -128,7 +184,7 @@ fun QuickStartScreen(
                 OutlinedTextField(
                     value = nickname,
                     onValueChange = { nickname = it },
-                    label = { Text("你的昵称") },
+                    label = { Text("你的昵称（可选）") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -316,46 +372,22 @@ fun QuickStartScreen(
             }
 
             item {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            appContainer.settingsRepository.updateNickname(nickname)
-                            appContainer.settingsRepository.updateAiSettings(
-                                apiKey = apiKey,
-                                baseUrl = baseUrl,
-                                model = model,
-                            )
-                            appContainer.settingsRepository.updateUseCustomColors(true)
-                            appContainer.settingsRepository.updatePaletteColor(
-                                dark = false,
-                                role = PaletteRole.PRIMARY,
-                                color = selectedColor,
-                            )
-                            appContainer.settingsRepository.updatePaletteColor(
-                                dark = true,
-                                role = PaletteRole.PRIMARY,
-                                color = selectedColor,
-                            )
-                            appContainer.settingsRepository.updatePaletteColor(
-                                dark = false,
-                                role = PaletteRole.SECONDARY,
-                                color = selectedColor,
-                            )
-                            appContainer.settingsRepository.updatePaletteColor(
-                                dark = true,
-                                role = PaletteRole.SECONDARY,
-                                color = selectedColor,
-                            )
-                            onFinish()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("进入原阅")
+                    Button(
+                        onClick = { saveAndClose(onFinish) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("进入原阅")
+                    }
+                    TextButton(onClick = { saveAndClose(onSkip) }) {
+                        Text("稍后设置")
+                    }
+                }
+            }
                 }
             }
         }
-    }
-}

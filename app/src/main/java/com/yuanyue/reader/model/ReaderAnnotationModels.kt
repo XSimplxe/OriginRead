@@ -26,6 +26,7 @@ enum class AnnotationType(val label: String) {
     UNDERLINE("划线"),
     NOTE("笔记"),
     BOOKMARK("书签"),
+    DRAW("涂鸦"),
 }
 
 data class AnnotationDraft(

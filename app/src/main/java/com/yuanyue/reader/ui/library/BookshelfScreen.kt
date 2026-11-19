@@ -186,19 +186,13 @@ fun BookshelfScreen(
 
             when (selectedTab) {
                 0 -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (favoriteBooks.isNotEmpty()) {
-                            OnlineFavoritesRow(
-                                books = favoriteBooks,
-                                onOpenBook = onOpenOnlineBook,
-                            )
-                        }
-                        LocalBooksContent(
-                            viewModel = localViewModel,
-                            onOpenBookDetail = onOpenBookDetail,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                    LocalBooksContent(
+                        viewModel = localViewModel,
+                        onOpenBookDetail = onOpenBookDetail,
+                        onlineFavorites = favoriteBooks,
+                        onOpenOnlineBook = onOpenOnlineBook,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
 
                 else -> {
@@ -232,56 +226,6 @@ fun BookshelfScreen(
                             onOpenComic = onOpenComic,
                             onOpenSourceManager = onOpenComicSourceManager,
                             modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OnlineFavoritesRow(
-    books: List<OnlineBookEntity>,
-    onOpenBook: (Long) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = "在线收藏",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(books, key = { it.id }) { book ->
-                Card(
-                    modifier = Modifier
-                        .size(width = 108.dp, height = 150.dp)
-                        .clickable { onOpenBook(book.id) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Column {
-                        AsyncImage(
-                            model = book.coverUrl,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .size(108.dp),
-                            contentScale = ContentScale.Crop,
-                        )
-                        Text(
-                            text = book.title,
-                            modifier = Modifier.padding(8.dp),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 }

@@ -36,12 +36,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yuanyue.reader.data.parser.ComicPage
+import com.yuanyue.reader.model.AnnotationDraft
+import com.yuanyue.reader.model.AnnotationType
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.io.File
 
@@ -52,7 +58,10 @@ fun LocalComicReaderScreen(
     onBack: () -> Unit,
 ) {
     val pages = viewModel.pages
+    val annotations = viewModel.annotations.collectAsState().value
     var vertical by remember { mutableStateOf(true) }
+    var drawMode by remember { mutableStateOf(false) }
+    var showNotes by remember { mutableStateOf(false) }
     var currentPage by remember(pages.size, vertical) { mutableIntStateOf(0) }
 
     Scaffold(
@@ -72,6 +81,16 @@ fun LocalComicReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { drawMode = !drawMode }) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = if (drawMode) "退出涂鸦" else "自由涂鸦",
+                            tint = if (drawMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    IconButton(onClick = { showNotes = true }) {
+                        Icon(Icons.Default.Bookmarks, contentDescription = "笔记与标注")
+                    }
                     TextButton(onClick = { vertical = !vertical }) {
                         Text(if (vertical) "上下" else "左右")
                     }
@@ -127,6 +146,20 @@ fun LocalComicReaderScreen(
             vertical -> {
                 ComicPageList(
                     pages = pages,
+                    annotations = annotations,
+                    drawMode = drawMode,
+                    onSaveStroke = { page, points ->
+                        viewModel.addAnnotation(
+                            AnnotationDraft(
+                                chapterIndex = 0,
+                                pageIndex = page,
+                                text = "漫画第 ${page + 1} 页涂鸦",
+                                type = AnnotationType.DRAW,
+                                note = points,
+                                color = 0xFF000000,
+                            ),
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
@@ -149,19 +182,73 @@ fun LocalComicReaderScreen(
                         .padding(padding)
                         .background(Color.Black),
                 ) { page ->
-                    ZoomableComicImageView(
-                        model = File(pages[page].imagePath),
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    val pageAnnotations = annotations.filter { it.pageIndex == page }
+                    val highlight = pageAnnotations.firstOrNull {
+                        it.type == AnnotationType.HIGHLIGHT.name || it.type == AnnotationType.NOTE.name
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (highlight != null) Color(highlight.color) else Color.Transparent,
+                            ),
+                    ) {
+                        ZoomableComicImageView(
+                            model = File(pages[page].imagePath),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        ComicDrawingOverlay(
+                            annotations = annotations,
+                            pageIndex = page,
+                            drawMode = drawMode,
+                            onSaveStroke = { points ->
+                                viewModel.addAnnotation(
+                                    AnnotationDraft(
+                                        chapterIndex = 0,
+                                        pageIndex = page,
+                                        text = "漫画第 ${page + 1} 页涂鸦",
+                                        type = AnnotationType.DRAW,
+                                        note = points,
+                                        color = 0xFF000000,
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.matchParentSize(),
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (showNotes) {
+        ComicNoteDialog(
+            pageIndex = currentPage,
+            existing = annotations,
+            onDismiss = { showNotes = false },
+            onSave = { draft ->
+                viewModel.addAnnotation(
+                    AnnotationDraft(
+                        chapterIndex = 0,
+                        pageIndex = draft.pageIndex,
+                        text = "漫画第 ${draft.pageIndex + 1} 页",
+                        type = draft.type,
+                        note = draft.note,
+                        color = draft.color,
+                    ),
+                )
+            },
+            onDelete = viewModel::deleteAnnotation,
+        )
     }
 }
 
 @Composable
 private fun ComicPageList(
     pages: List<ComicPage>,
+    annotations: List<com.yuanyue.reader.model.ReaderAnnotationEntity>,
+    drawMode: Boolean,
+    onSaveStroke: (Int, String) -> Unit,
     modifier: Modifier,
     onPageChange: (Int) -> Unit,
 ) {
@@ -176,12 +263,29 @@ private fun ComicPageList(
         modifier = modifier,
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
-        itemsIndexed(pages, key = { index, page -> "${page.imagePath}#$index" }) { _, page ->
-            ComicImageView(
-                model = File(page.imagePath),
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            )
+        itemsIndexed(pages, key = { index, page -> "${page.imagePath}#$index" }) { index, page ->
+            val pageAnnotations = annotations.filter { it.pageIndex == index }
+            val highlight = pageAnnotations.firstOrNull {
+                it.type == AnnotationType.HIGHLIGHT.name || it.type == AnnotationType.NOTE.name
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (highlight != null) Color(highlight.color) else Color.Transparent),
+            ) {
+                ComicImageView(
+                    model = File(page.imagePath),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
+                )
+                ComicDrawingOverlay(
+                    annotations = annotations,
+                    pageIndex = index,
+                    drawMode = drawMode,
+                    onSaveStroke = { onSaveStroke(index, it) },
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         }
     }
 }

@@ -54,7 +54,7 @@ fun rememberPagedText(
     return pages
 }
 
-private suspend fun paginate(
+internal suspend fun paginate(
     text: String,
     style: TextStyle,
     pageWidth: Int,
